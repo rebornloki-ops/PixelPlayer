@@ -53,6 +53,10 @@ private const val REQUIRED_NEUTRAL_POPULATION = 0.92
 private const val MAX_HIGH_CHROMA_POPULATION = 0.03
 private const val MAX_WEIGHTED_CHROMA_FOR_NEUTRAL = 9.0
 
+fun clearExtractedColorCache() {
+    extractedColorCache.evictAll()
+}
+
 fun extractSeedColor(
     bitmap: Bitmap,
     config: ColorExtractionConfig = ColorExtractionConfig()

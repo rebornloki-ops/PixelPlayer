@@ -1355,9 +1355,8 @@ fun UnifiedPlayerSheet(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(
-                                            color = MaterialTheme.colorScheme.scrim.copy(alpha = queueScrimAlpha)
-                                        )
+                                        .graphicsLayer { alpha = queueScrimAlpha }
+                                        .background(MaterialTheme.colorScheme.scrim)
                                 )
                             }
 
@@ -1400,49 +1399,55 @@ fun UnifiedPlayerSheet(
                                 }
 
                                 if (shouldRenderQueueSheet) {
-                                  QueueBottomSheet(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .offset {
-                                             IntOffset(
-                                                x = 0,
-                                                y = queueSheetOffset.value.roundToInt()
-                                            )
-                                        }
-                                        .graphicsLayer {
-                                            alpha =
-                                                if (queueHiddenOffsetPx == 0f || !showQueueSheet) 0f else 1f
-                                        }
-                                        .onGloballyPositioned { coordinates ->
-                                            queueSheetHeightPx = coordinates.size.height.toFloat()
-                                        },
-                                    queue = currentPlaybackQueue,
-                                    currentQueueSourceName = currentQueueSourceName,
-                                    currentSongId = infrequentPlayerState.currentSong?.id,
-                                    onDismiss = onDimissQueueRequest,
-                                    onSongInfoClick = onQueueSongInfoClick,
-                                    onPlaySong = onPlayQueueSong, // Correct lambda reference
-                                    onRemoveSong = onRemoveQueueSong,
-                                    onReorder = onReorderQueue,
-                                    repeatMode = infrequentPlayerState.repeatMode,
-                                    isShuffleOn = infrequentPlayerState.isShuffleEnabled,
-                                    onToggleRepeat = onToggleRepeat,
-                                    onToggleShuffle = onToggleShuffle,
-                                    onClearQueue = onClearQueue,
-                                    activeTimerValueDisplay = playerViewModel.activeTimerValueDisplay.collectAsState(),
-                                    playCount = playerViewModel.playCount.collectAsState(),
-                                    isEndOfTrackTimerActive = playerViewModel.isEndOfTrackTimerActive.collectAsState(),
-                                    onSetPredefinedTimer = onSetPredefinedTimer,
-                                    onSetEndOfTrackTimer = onSetEndOfTrackTimer,
-                                    onOpenCustomTimePicker = onOpenCustomTimePicker,
-                                    onCancelTimer = onCancelTimer,
-                                    onCancelCountedPlay = onCancelCountedPlay,
-                                    onPlayCounter = onPlayCounter,
-                                    onRequestSaveAsPlaylist = onRequestSavePlaylist,
-                                    onQueueDragStart = onQueueStartDrag,
-                                    onQueueDrag = onQueueDrag,
-                                    onQueueRelease = onQueueRelease
-                                )
+                                    MaterialTheme(
+                                        colorScheme = albumColorScheme,
+                                        typography = MaterialTheme.typography,
+                                        shapes = MaterialTheme.shapes
+                                    ) {
+                                        QueueBottomSheet(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .offset {
+                                                     IntOffset(
+                                                        x = 0,
+                                                        y = queueSheetOffset.value.roundToInt()
+                                                    )
+                                                }
+                                                .graphicsLayer {
+                                                    alpha =
+                                                        if (queueHiddenOffsetPx == 0f || !showQueueSheet) 0f else 1f
+                                                }
+                                                .onGloballyPositioned { coordinates ->
+                                                    queueSheetHeightPx = coordinates.size.height.toFloat()
+                                                },
+                                            queue = currentPlaybackQueue,
+                                            currentQueueSourceName = currentQueueSourceName,
+                                            currentSongId = infrequentPlayerState.currentSong?.id,
+                                            onDismiss = onDimissQueueRequest,
+                                            onSongInfoClick = onQueueSongInfoClick,
+                                            onPlaySong = onPlayQueueSong, // Correct lambda reference
+                                            onRemoveSong = onRemoveQueueSong,
+                                            onReorder = onReorderQueue,
+                                            repeatMode = infrequentPlayerState.repeatMode,
+                                            isShuffleOn = infrequentPlayerState.isShuffleEnabled,
+                                            onToggleRepeat = onToggleRepeat,
+                                            onToggleShuffle = onToggleShuffle,
+                                            onClearQueue = onClearQueue,
+                                            activeTimerValueDisplay = playerViewModel.activeTimerValueDisplay.collectAsState(),
+                                            playCount = playerViewModel.playCount.collectAsState(),
+                                            isEndOfTrackTimerActive = playerViewModel.isEndOfTrackTimerActive.collectAsState(),
+                                            onSetPredefinedTimer = onSetPredefinedTimer,
+                                            onSetEndOfTrackTimer = onSetEndOfTrackTimer,
+                                            onOpenCustomTimePicker = onOpenCustomTimePicker,
+                                            onCancelTimer = onCancelTimer,
+                                            onCancelCountedPlay = onCancelCountedPlay,
+                                            onPlayCounter = onPlayCounter,
+                                            onRequestSaveAsPlaylist = onRequestSavePlaylist,
+                                            onQueueDragStart = onQueueStartDrag,
+                                            onQueueDrag = onQueueDrag,
+                                            onQueueRelease = onQueueRelease
+                                        )
+                                    }
                               }
 
                             // Show SongInfoBottomSheet when a song is selected
@@ -1642,9 +1647,7 @@ private fun MiniPlayerContentInternal(
                 contentDescription = "Carátula de ${song.title}",
                 shape = CircleShape,
                 targetSize = Size(150, 150),
-                modifier = Modifier
-                    .size(44.dp)
-                    .alpha(if (isCastConnecting) 0.5f else 1f)
+                modifier = Modifier.size(44.dp)
             )
             if (isCastConnecting) {
                 CircularProgressIndicator(
@@ -1690,7 +1693,7 @@ private fun MiniPlayerContentInternal(
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(LocalMaterialTheme.current.primary.copy(alpha = 0.2f))
+                .background(LocalMaterialTheme.current.onPrimary)
                 .clickable(
                     interactionSource = interaction,
                     indication = indication,
@@ -1740,7 +1743,7 @@ private fun MiniPlayerContentInternal(
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(LocalMaterialTheme.current.primary.copy(alpha = 0.2f))
+                .background(LocalMaterialTheme.current.onPrimary)
                 .clickable(
                     interactionSource = interaction,
                     indication = indication,

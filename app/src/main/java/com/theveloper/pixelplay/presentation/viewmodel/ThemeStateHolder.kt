@@ -162,17 +162,35 @@ class ThemeStateHolder @Inject constructor(
          )
     }
 
-    suspend fun forceRegenerateColorScheme(uriString: String) {
+    suspend fun forceRegenerateColorScheme(
+        uriString: String,
+        regenerateAllStyles: Boolean = false
+    ) {
          android.util.Log.d("ThemeStateHolder", "forceRegenerateColorScheme called for: $uriString")
          android.util.Log.d("ThemeStateHolder", "Current tracked global URI: $currentAlbumArtUri")
          
          colorSchemeProcessor.invalidateScheme(uriString)
-         
-         val newScheme = colorSchemeProcessor.getOrGenerateColorScheme(
-             albumArtUri = uriString,
-             paletteStyle = currentPaletteStyle,
-             forceRefresh = true
-         )
+
+         val newScheme = if (regenerateAllStyles) {
+             var selectedStyleScheme: ColorSchemePair? = null
+             AlbumArtPaletteStyle.entries.forEach { style ->
+                 val generated = colorSchemeProcessor.getOrGenerateColorScheme(
+                     albumArtUri = uriString,
+                     paletteStyle = style,
+                     forceRefresh = true
+                 )
+                 if (style == currentPaletteStyle) {
+                     selectedStyleScheme = generated
+                 }
+             }
+             selectedStyleScheme
+         } else {
+             colorSchemeProcessor.getOrGenerateColorScheme(
+                 albumArtUri = uriString,
+                 paletteStyle = currentPaletteStyle,
+                 forceRefresh = true
+             )
+         }
 
          // Iterate if there is an active flow for this URI and update it
          val activeFlow = individualAlbumColorSchemes[uriString]

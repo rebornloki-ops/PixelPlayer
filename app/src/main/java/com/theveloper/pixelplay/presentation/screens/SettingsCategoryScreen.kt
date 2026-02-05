@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,9 +24,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ClearAll
@@ -39,17 +42,24 @@ import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Science
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -70,6 +80,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -85,6 +96,7 @@ import com.theveloper.pixelplay.data.preferences.LaunchTab
 import com.theveloper.pixelplay.data.preferences.LibraryNavigationMode
 import com.theveloper.pixelplay.data.preferences.NavBarStyle
 import com.theveloper.pixelplay.data.preferences.ThemePreference
+import com.theveloper.pixelplay.data.model.Song
 import com.theveloper.pixelplay.data.model.LyricsSourcePreference
 import com.theveloper.pixelplay.data.worker.SyncProgress
 import com.theveloper.pixelplay.presentation.components.ExpressiveTopBarContent
@@ -124,6 +136,7 @@ fun SettingsCategoryScreen(
     val isExplorerReady by settingsViewModel.isExplorerReady.collectAsState()
     val isSyncing by settingsViewModel.isSyncing.collectAsState()
     val syncProgress by settingsViewModel.syncProgress.collectAsState()
+    val allSongs by playerViewModel.allSongsFlow.collectAsState()
     val explorerRoot = settingsViewModel.explorerRoot()
 
     // Local State
@@ -133,6 +146,26 @@ fun SettingsCategoryScreen(
     var showRebuildDatabaseWarning by remember { mutableStateOf(false) }
     var showRegenerateDailyMixDialog by remember { mutableStateOf(false) }
     var showRegenerateStatsDialog by remember { mutableStateOf(false) }
+    var showPaletteRegenerateSheet by remember { mutableStateOf(false) }
+    var isPaletteRegenerateRunning by remember { mutableStateOf(false) }
+    var paletteSongSearchQuery by remember { mutableStateOf("") }
+    val paletteRegenerateSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val songsWithAlbumArt = remember(allSongs) {
+        allSongs.filter { !it.albumArtUriString.isNullOrBlank() }
+    }
+    val filteredPaletteSongs = remember(songsWithAlbumArt, paletteSongSearchQuery) {
+        val query = paletteSongSearchQuery.trim()
+        if (query.isBlank()) {
+            songsWithAlbumArt
+        } else {
+            songsWithAlbumArt.filter { song ->
+                song.title.contains(query, ignoreCase = true) ||
+                    song.displayArtist.contains(query, ignoreCase = true) ||
+                    song.album.contains(query, ignoreCase = true)
+            }
+        }
+    }
 
     // Fetch models on page load when API key exists and models are not already loaded
     LaunchedEffect(category, geminiApiKey) {
@@ -687,6 +720,18 @@ fun SettingsCategoryScreen(
                                     primaryActionLabel = "Regenerate Stats",
                                     onPrimaryAction = { showRegenerateStatsDialog = true }
                                 )
+                                ActionSettingsItem(
+                                    title = "Force Album Palette Regeneration",
+                                    subtitle = if (songsWithAlbumArt.isEmpty()) {
+                                        "No songs with album art were found."
+                                    } else {
+                                        "Pick a song to rebuild all album color variants from scratch."
+                                    },
+                                    icon = { Icon(Icons.Outlined.Style, null, tint = MaterialTheme.colorScheme.secondary) },
+                                    primaryActionLabel = "Choose Song",
+                                    onPrimaryAction = { showPaletteRegenerateSheet = true },
+                                    enabled = songsWithAlbumArt.isNotEmpty() && !isPaletteRegenerateRunning
+                                )
                             }
 
                             SettingsSubsection(
@@ -780,6 +825,49 @@ fun SettingsCategoryScreen(
         onDone = { showExplorerSheet = false },
         onDismiss = { showExplorerSheet = false }
     )
+
+    if (showPaletteRegenerateSheet) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                if (!isPaletteRegenerateRunning) {
+                    showPaletteRegenerateSheet = false
+                    paletteSongSearchQuery = ""
+                }
+            },
+            sheetState = paletteRegenerateSheetState
+        ) {
+            PaletteRegenerateSongSheetContent(
+                songs = filteredPaletteSongs,
+                isRunning = isPaletteRegenerateRunning,
+                searchQuery = paletteSongSearchQuery,
+                onSearchQueryChange = { paletteSongSearchQuery = it },
+                onClearSearch = { paletteSongSearchQuery = "" },
+                onSongClick = { song ->
+                    if (isPaletteRegenerateRunning) return@PaletteRegenerateSongSheetContent
+                    isPaletteRegenerateRunning = true
+                    coroutineScope.launch {
+                        val success = playerViewModel.forceRegenerateAlbumPaletteForSong(song)
+                        isPaletteRegenerateRunning = false
+                        if (success) {
+                            showPaletteRegenerateSheet = false
+                            paletteSongSearchQuery = ""
+                            Toast.makeText(
+                                context,
+                                "Palette regenerated for ${song.title}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "Could not regenerate palette for ${song.title}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
+            )
+        }
+    }
     
      // Dialogs logic (copied)
     if (showClearLyricsDialog) {
@@ -857,6 +945,142 @@ fun SettingsCategoryScreen(
             },
             dismissButton = { TextButton(onClick = { showRegenerateStatsDialog = false }) { Text("Cancel") } }
         )
+    }
+}
+
+@Composable
+private fun PaletteRegenerateSongSheetContent(
+    songs: List<Song>,
+    isRunning: Boolean,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    onClearSearch: () -> Unit,
+    onSongClick: (Song) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "Force Regenerate Album Palette",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = "Select a song to clear cached theme data and regenerate all palette styles from the album art.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            enabled = !isRunning,
+            placeholder = { Text("Search by title, artist, or album") },
+            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+            trailingIcon = {
+                if (searchQuery.isNotBlank()) {
+                    IconButton(
+                        onClick = onClearSearch,
+                        enabled = !isRunning
+                    ) {
+                        Icon(Icons.Outlined.ClearAll, contentDescription = "Clear search")
+                    }
+                }
+            },
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer
+            )
+        )
+
+        if (isRunning) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp
+                )
+                Text(
+                    text = "Regenerating palette...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 120.dp, max = 460.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (songs.isEmpty()) {
+                item {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "No songs match your search.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                }
+            } else {
+                items(songs, key = { it.id }) { song ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(enabled = !isRunning) { onSongClick(song) }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = song.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = song.displayArtist,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (song.album.isNotBlank()) {
+                                Text(
+                                    text = song.album,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

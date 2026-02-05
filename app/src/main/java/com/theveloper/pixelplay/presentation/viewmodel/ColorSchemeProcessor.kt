@@ -18,6 +18,7 @@ import com.theveloper.pixelplay.data.database.AlbumArtThemeDao
 import com.theveloper.pixelplay.data.database.AlbumArtThemeEntity
 import com.theveloper.pixelplay.data.database.StoredColorSchemeValues
 import com.theveloper.pixelplay.data.database.toComposeColor
+import com.theveloper.pixelplay.ui.theme.clearExtractedColorCache
 import com.theveloper.pixelplay.ui.theme.extractSeedColor
 import com.theveloper.pixelplay.ui.theme.generateColorSchemeFromSeed
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -230,6 +231,7 @@ class ColorSchemeProcessor @Inject constructor(
      * Invalidates the color scheme for a URI in both memory and database.
      */
     suspend fun invalidateScheme(uri: String) {
+        clearExtractedColorCache()
         removeUriFromMemoryCache(uri)
         withContext(Dispatchers.IO) {
             albumArtThemeDao.deleteThemesByUris(listOf(uri))

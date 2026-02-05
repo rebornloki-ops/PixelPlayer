@@ -2904,6 +2904,18 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    suspend fun forceRegenerateAlbumPaletteForSong(song: Song): Boolean {
+        val albumArtUri = song.albumArtUriString?.takeIf { it.isNotBlank() } ?: return false
+        return runCatching {
+            // Full reset: clear all cached variants for this URI and recreate every style from scratch.
+            themeStateHolder.forceRegenerateColorScheme(
+                uriString = albumArtUri,
+                regenerateAllStyles = true
+            )
+            true
+        }.getOrDefault(false)
+    }
+
     suspend fun generateAiMetadata(song: Song, fields: List<String>): Result<SongMetadata> {
         return aiStateHolder.generateAiMetadata(song, fields)
     }

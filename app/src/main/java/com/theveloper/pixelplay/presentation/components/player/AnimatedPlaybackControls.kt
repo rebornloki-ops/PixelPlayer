@@ -60,10 +60,14 @@ fun AnimatedPlaybackControls(
     releaseDelay: Long = 220L,
     playPauseCornerPlaying: Dp = 60.dp,
     playPauseCornerPaused: Dp = 26.dp,
-    colorOtherButtons: Color = LocalMaterialTheme.current.primary.copy(alpha = 0.15f),
+    colorOtherButtons: Color = LocalMaterialTheme.current.secondaryContainer,
     colorPlayPause: Color = LocalMaterialTheme.current.primary,
     tintPlayPauseIcon: Color = LocalMaterialTheme.current.onPrimary,
-    tintOtherIcons: Color = LocalMaterialTheme.current.primary,
+    tintOtherIcons: Color = LocalMaterialTheme.current.onSecondaryContainer,
+    colorPreviousButton: Color = colorOtherButtons,
+    colorNextButton: Color = colorOtherButtons,
+    tintPreviousIcon: Color = tintOtherIcons,
+    tintNextIcon: Color = tintOtherIcons,
     playPauseIconSize: Dp = 36.dp,
     iconSize: Dp = 32.dp,
 ) {
@@ -134,7 +138,7 @@ fun AnimatedPlaybackControls(
                     .weight(prevWeight)
                     .fillMaxHeight()
                     .clip(CircleShape)
-                    .background(colorOtherButtons)
+                    .background(colorPreviousButton)
                     .clickable {
                         lastClicked = PlaybackButtonType.PREVIOUS
                         onPrevious()
@@ -144,7 +148,7 @@ fun AnimatedPlaybackControls(
                 Icon(
                     painter = painterResource(R.drawable.rounded_skip_previous_24),
                     contentDescription = "Anterior",
-                    tint = tintOtherIcons,
+                    tint = tintPreviousIcon,
                     modifier = Modifier.size(iconSize)
                 )
             }
@@ -202,7 +206,7 @@ fun AnimatedPlaybackControls(
                     .weight(nextWeight)
                     .fillMaxHeight()
                     .clip(CircleShape)
-                    .background(colorOtherButtons)
+                    .background(colorNextButton)
                     .clickable {
                         lastClicked = PlaybackButtonType.NEXT
                         onNext()
@@ -212,7 +216,7 @@ fun AnimatedPlaybackControls(
                 Icon(
                     painter = painterResource(R.drawable.rounded_skip_next_24),
                     contentDescription = "Siguiente",
-                    tint = tintOtherIcons,
+                    tint = tintNextIcon,
                     modifier = Modifier.size(iconSize)
                 )
             }

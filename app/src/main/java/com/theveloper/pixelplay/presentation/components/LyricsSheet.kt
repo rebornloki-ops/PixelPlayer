@@ -716,48 +716,48 @@ fun LyricsSheet(
         }
 
         if (showMoreSheet) {
-            LyricsMoreBottomSheet(
-                onDismissRequest = { showMoreSheet = false },
-                sheetState = moreSheetState,
-                lyrics = lyrics,
-                showSyncedLyrics = showSyncedLyrics == true,
-                isSyncControlsVisible = showSyncControls,
-                onSaveLyricsAsLrc = { showSaveLyricsDialog = true },
-                onResetImportedLyrics = {
-                    wasResetTriggered = true
-                    resetLyricsForCurrentSong()
-                },
-                onToggleSyncControls = {
-                    resetImmersiveTimer()
-                    showSyncControls = !showSyncControls
-                },
-                isImmersiveTemporarilyDisabled = isImmersiveTemporarilyDisabled,
-                onSetImmersiveTemporarilyDisabled = {
-                    resetImmersiveTimer()
-                    onSetImmersiveTemporarilyDisabled(it)
-                },
-                isShuffleEnabled = isShuffleEnabled,
-                repeatMode = repeatMode,
-                isFavoriteProvider = isFavoriteProvider,
-                onShuffleToggle = {
-                    resetImmersiveTimer()
-                    onShuffleToggle()
-                },
-                onRepeatToggle = {
-                    resetImmersiveTimer()
-                    onRepeatToggle()
-                },
-                onFavoriteToggle = {
-                    resetImmersiveTimer()
-                    onFavoriteToggle()
-                },
-//                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-//                contentColor = MaterialTheme.colorScheme.onSurface,
-//                accentColor = MaterialTheme.colorScheme.primary,
-//                onAccentColor = MaterialTheme.colorScheme.onPrimary,
-//                tertiaryColor = MaterialTheme.colorScheme.tertiary,
-//                onTertiaryColor = MaterialTheme.colorScheme.onTertiary
-            )
+            MaterialTheme(
+                colorScheme = LocalMaterialTheme.current,
+                typography = MaterialTheme.typography,
+                shapes = MaterialTheme.shapes
+            ) {
+                LyricsMoreBottomSheet(
+                    onDismissRequest = { showMoreSheet = false },
+                    sheetState = moreSheetState,
+                    lyrics = lyrics,
+                    showSyncedLyrics = showSyncedLyrics == true,
+                    isSyncControlsVisible = showSyncControls,
+                    onSaveLyricsAsLrc = { showSaveLyricsDialog = true },
+                    onResetImportedLyrics = {
+                        wasResetTriggered = true
+                        resetLyricsForCurrentSong()
+                    },
+                    onToggleSyncControls = {
+                        resetImmersiveTimer()
+                        showSyncControls = !showSyncControls
+                    },
+                    isImmersiveTemporarilyDisabled = isImmersiveTemporarilyDisabled,
+                    onSetImmersiveTemporarilyDisabled = {
+                        resetImmersiveTimer()
+                        onSetImmersiveTemporarilyDisabled(it)
+                    },
+                    isShuffleEnabled = isShuffleEnabled,
+                    repeatMode = repeatMode,
+                    isFavoriteProvider = isFavoriteProvider,
+                    onShuffleToggle = {
+                        resetImmersiveTimer()
+                        onShuffleToggle()
+                    },
+                    onRepeatToggle = {
+                        resetImmersiveTimer()
+                        onRepeatToggle()
+                    },
+                    onFavoriteToggle = {
+                        resetImmersiveTimer()
+                        onFavoriteToggle()
+                    },
+                )
+            }
         }
 
 

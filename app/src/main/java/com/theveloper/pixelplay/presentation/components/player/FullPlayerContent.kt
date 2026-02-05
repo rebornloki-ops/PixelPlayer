@@ -11,7 +11,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -50,7 +49,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,16 +60,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -89,14 +84,11 @@ import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.consumeAllChanges
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.res.stringResource
 import androidx.media3.common.Player
@@ -104,16 +96,12 @@ import androidx.media3.common.util.UnstableApi
 import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.data.model.Artist
 import com.theveloper.pixelplay.data.model.Song
-import com.theveloper.pixelplay.data.preferences.AlbumArtQuality
 import com.theveloper.pixelplay.data.preferences.CarouselStyle
 import com.theveloper.pixelplay.data.preferences.FullPlayerLoadingTweaks
 import com.theveloper.pixelplay.presentation.components.AlbumCarouselSection
 import com.theveloper.pixelplay.presentation.components.AutoScrollingTextOnDemand
 import com.theveloper.pixelplay.presentation.components.LocalMaterialTheme
 import com.theveloper.pixelplay.presentation.components.LyricsSheet
-import com.theveloper.pixelplay.presentation.components.WavyMusicSlider
-import com.theveloper.pixelplay.presentation.components.scoped.DeferAt
-import com.theveloper.pixelplay.presentation.components.scoped.PrefetchAlbumNeighborsImg
 import com.theveloper.pixelplay.presentation.components.scoped.rememberSmoothProgress
 import com.theveloper.pixelplay.presentation.components.subcomps.FetchLyricsDialog
 import com.theveloper.pixelplay.presentation.viewmodel.LyricsSearchUiState
@@ -123,16 +111,11 @@ import com.theveloper.pixelplay.ui.theme.GoogleSansRounded
 import com.theveloper.pixelplay.utils.AudioMetaUtils.mimeTypeToFormat
 import com.theveloper.pixelplay.utils.formatDuration
 import kotlinx.collections.immutable.ImmutableList
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 import timber.log.Timber
 import kotlin.math.roundToLong
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import com.theveloper.pixelplay.presentation.components.WavySliderExpressive
 import com.theveloper.pixelplay.presentation.components.ToggleSegmentButton
 
@@ -230,13 +213,24 @@ fun FullPlayerContent(
         tween<Float>(durationMillis = 240, easing = FastOutSlowInEasing)
     }
 
-    val controlOtherButtonsColor = LocalMaterialTheme.current.primary.copy(alpha = 0.15f)
-    val controlPlayPauseColor = LocalMaterialTheme.current.primary
-    val controlTintPlayPauseIcon = LocalMaterialTheme.current.onPrimary
-    val controlTintOtherIcons = LocalMaterialTheme.current.primary
+    val playerOnBaseColor = LocalMaterialTheme.current.onPrimaryContainer
+    val playerAccentColor = LocalMaterialTheme.current.primary
+    val playerOnAccentColor = LocalMaterialTheme.current.onPrimary
+    val playerSecondaryAccentColor = LocalMaterialTheme.current.secondary
+    val playerOnSecondaryAccentColor = LocalMaterialTheme.current.onSecondary
+    val playerOnSecondaryContainerColor = LocalMaterialTheme.current.onSecondaryContainer
+    val playerTertiaryAccentColor = LocalMaterialTheme.current.tertiaryContainer
+    val playerOnTertiaryAccentColor = LocalMaterialTheme.current.onTertiaryContainer
+    val playerSurfaceColor = LocalMaterialTheme.current.surfaceContainer
+    val playerSurfaceHighColor = LocalMaterialTheme.current.surfaceContainerHigh
+    val playerSurfaceHighestColor = LocalMaterialTheme.current.surfaceContainerHighest
+    val playerSubtleTextColor = LocalMaterialTheme.current.onSurfaceVariant
+    val playerOnSurfaceColor = LocalMaterialTheme.current.onSurface
 
-    val placeholderColor = LocalMaterialTheme.current.primary.copy(alpha = 0.08f)
-    val placeholderOnColor = LocalMaterialTheme.current.primary.copy(alpha = 0.04f)
+    val controlTintOtherIcons = playerOnSecondaryAccentColor
+
+    val placeholderColor = playerOnBaseColor.copy(alpha = 0.1f)
+    val placeholderOnColor = playerOnBaseColor.copy(alpha = 0.2f)
 
     val isLandscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -385,10 +379,14 @@ fun FullPlayerContent(
                     height = 80.dp,
                     pressAnimationSpec = stableControlAnimationSpec,
                     releaseDelay = 220L,
-                    colorOtherButtons = controlOtherButtonsColor,
-                    colorPlayPause = controlPlayPauseColor,
-                    tintPlayPauseIcon = controlTintPlayPauseIcon,
-                    tintOtherIcons = controlTintOtherIcons
+                    colorOtherButtons = playerSecondaryAccentColor,
+                    colorPlayPause = playerAccentColor,
+                    tintPlayPauseIcon = playerOnAccentColor,
+                    tintOtherIcons = controlTintOtherIcons,
+                    colorPreviousButton = playerOnAccentColor,
+                    colorNextButton = playerOnAccentColor,
+                    tintPreviousIcon = playerAccentColor,
+                    tintNextIcon = playerAccentColor
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -419,10 +417,10 @@ fun FullPlayerContent(
             expansionFractionProvider = expansionFractionProvider,
             isPlayingProvider = isPlayingProvider,
             currentSheetState = currentSheetState,
-            activeTrackColor = LocalMaterialTheme.current.primary,
-            inactiveTrackColor = LocalMaterialTheme.current.primary.copy(alpha = 0.2f),
-            thumbColor = LocalMaterialTheme.current.primary,
-            timeTextColor = LocalMaterialTheme.current.onPrimaryContainer.copy(alpha = 0.7f),
+            activeTrackColor = playerAccentColor,
+            inactiveTrackColor = playerOnBaseColor.copy(alpha = 0.2f),
+            thumbColor = playerAccentColor,
+            timeTextColor = playerOnBaseColor,
             loadingTweaks = loadingTweaks
         )
     }
@@ -453,10 +451,12 @@ fun FullPlayerContent(
                 song = song,
                 currentSongArtists = currentSongArtists,
                 expansionFractionProvider = expansionFractionProvider,
-                textColor = LocalMaterialTheme.current.onPrimaryContainer,
-                artistTextColor = LocalMaterialTheme.current.onPrimaryContainer.copy(alpha = 0.8f),
+                textColor = playerOnBaseColor,
+                artistTextColor = playerOnBaseColor.copy(alpha = 0.7f),
                 playerViewModel = playerViewModel,
                 gradientEdgeColor = LocalMaterialTheme.current.primaryContainer,
+                chipColor = playerOnAccentColor.copy(alpha = 0.8f),
+                chipContentColor = playerAccentColor,
                 showQueueButton = isLandscape,
                 onClickQueue = {
                     showSongInfoBottomSheet = true
@@ -595,8 +595,6 @@ fun FullPlayerContent(
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
                         titleContentColor = LocalMaterialTheme.current.onPrimaryContainer,
-                        actionIconContentColor = LocalMaterialTheme.current.onPrimaryContainer,
-                        navigationIconContentColor = LocalMaterialTheme.current.onPrimaryContainer
                     ),
                     title = {
                         val isRemotePlaybackActive by playerViewModel.isRemotePlaybackActive.collectAsState()
@@ -627,14 +625,14 @@ fun FullPlayerContent(
                                 modifier = Modifier
                                     .size(42.dp)
                                     .clip(CircleShape)
-                                    .background(LocalMaterialTheme.current.onPrimary)
+                                    .background(playerOnAccentColor.copy(alpha = 0.7f))
                                     .clickable(onClick = onCollapse),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     painter = painterResource(R.drawable.rounded_keyboard_arrow_down_24),
                                     contentDescription = "Colapsar",
-                                    tint = LocalMaterialTheme.current.primary
+                                    tint = playerAccentColor
                                 )
                             }
                         }
@@ -677,7 +675,7 @@ fun FullPlayerContent(
                                 animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
                             )
                             val castContainerColor by animateColorAsState(
-                                targetValue = LocalMaterialTheme.current.onPrimary,
+                                targetValue = playerOnAccentColor.copy(alpha = 0.7f),
                                 animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
                             )
                             Box(
@@ -719,7 +717,7 @@ fun FullPlayerContent(
                                             isBluetoothActive -> "Bluetooth"
                                             else -> "Local playback"
                                         },
-                                        tint = LocalMaterialTheme.current.primary
+                                        tint = playerAccentColor
                                     )
                                     AnimatedVisibility(visible = showCastLabel) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -743,7 +741,7 @@ fun FullPlayerContent(
                                                     Text(
                                                         text = label,
                                                         style = MaterialTheme.typography.labelMedium,
-                                                        color = LocalMaterialTheme.current.primary,
+                                                        color = playerAccentColor,
                                                         maxLines = 1,
                                                         overflow = TextOverflow.Ellipsis,
                                                         modifier = Modifier.weight(1f, fill = false)
@@ -753,7 +751,7 @@ fun FullPlayerContent(
                                                             modifier = Modifier
                                                                 .size(14.dp),
                                                             strokeWidth = 2.dp,
-                                                            color = LocalMaterialTheme.current.primary
+                                                            color = playerAccentColor
                                                         )
                                                     }
                                                     if (isRemotePlaybackActive && !isCastConnecting) {
@@ -761,7 +759,7 @@ fun FullPlayerContent(
                                                             modifier = Modifier
                                                                 .size(8.dp)
                                                                 .clip(CircleShape)
-                                                                .background(Color(0xFF38C450))
+                                                                .background(LocalMaterialTheme.current.onTertiaryContainer)
                                                         )
                                                     }
                                                 }
@@ -783,7 +781,7 @@ fun FullPlayerContent(
                                             bottomEnd = 50.dp
                                         )
                                     )
-                                    .background(LocalMaterialTheme.current.onPrimary)
+                                    .background(playerOnAccentColor.copy(alpha = 0.7f))
                                     .clickable {
                                         showSongInfoBottomSheet = true
                                         onShowQueueClicked()
@@ -793,7 +791,7 @@ fun FullPlayerContent(
                                 Icon(
                                     painter = painterResource(R.drawable.rounded_queue_music_24),
                                     contentDescription = "Song options",
-                                    tint = LocalMaterialTheme.current.primary
+                                    tint = playerAccentColor
                                 )
                             }
                         }
@@ -896,7 +894,7 @@ fun FullPlayerContent(
                             }
                     )
                     if (index != currentSongArtists.lastIndex) {
-                        HorizontalDivider(color = LocalMaterialTheme.current.onPrimaryContainer.copy(alpha = 0.08f))
+                        HorizontalDivider(color = LocalMaterialTheme.current.outlineVariant)
                     }
                 }
             }
@@ -916,6 +914,8 @@ private fun SongMetadataDisplaySection(
     artistTextColor: Color,
     gradientEdgeColor: Color,
     playerViewModel: PlayerViewModel,
+    chipColor: Color,
+    chipContentColor: Color,
     onClickLyrics: () -> Unit,
     showQueueButton: Boolean,
     onClickQueue: () -> Unit,
@@ -963,14 +963,14 @@ private fun SongMetadataDisplaySection(
                                 bottomEnd = 6.dp
                             )
                         )
-                        .background(LocalMaterialTheme.current.onPrimary)
+                        .background(chipColor)
                         .clickable { onClickLyrics() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.rounded_lyrics_24),
                         contentDescription = "Lyrics",
-                        tint = LocalMaterialTheme.current.primary
+                        tint = chipContentColor
                     )
                 }
                 Box(
@@ -984,14 +984,14 @@ private fun SongMetadataDisplaySection(
                                 bottomEnd = 50.dp
                             )
                         )
-                        .background(LocalMaterialTheme.current.onPrimary)
+                        .background(chipColor)
                         .clickable { onClickQueue() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.rounded_queue_music_24),
                         contentDescription = "Queue",
-                        tint = LocalMaterialTheme.current.primary
+                        tint = chipContentColor
                     )
                 }
             }
@@ -1001,8 +1001,8 @@ private fun SongMetadataDisplaySection(
                 modifier = Modifier
                     .size(width = 48.dp, height = 48.dp),
                 colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = LocalMaterialTheme.current.onPrimary,
-                    contentColor = LocalMaterialTheme.current.primary
+                    containerColor = chipColor,
+                    contentColor = chipContentColor
                 ),
                 onClick = onClickLyrics,
             ) {
@@ -1121,8 +1121,8 @@ private fun PlayerProgressBarSection(
 
     val shouldDelay = loadingTweaks?.let { it.delayAll || it.delayProgressBar } ?: false
 
-    val placeholderColor = LocalMaterialTheme.current.primary.copy(alpha = 0.08f)
-    val placeholderOnColor = LocalMaterialTheme.current.primary.copy(alpha = 0.04f)
+    val placeholderColor = LocalMaterialTheme.current.onPrimaryContainer.copy(alpha = 0.25f)
+    val placeholderOnColor = LocalMaterialTheme.current.onPrimaryContainer.copy(alpha = 0.2f)
 
     DelayedContent(
         shouldDelay = shouldDelay,
@@ -1574,11 +1574,13 @@ private fun BottomToggleRow(
 ) {
     val isFavorite = isFavoriteProvider()
     val rowCorners = 60.dp
-    val inactiveBg = LocalMaterialTheme.current.primary.copy(alpha = 0.08f)
+    val inactiveBg = LocalMaterialTheme.current.onSurface.copy(alpha = 0.07f)
+    val inactiveContentColor = LocalMaterialTheme.current.onSurface
+
 
     Box(
         modifier = modifier.background(
-            color = LocalMaterialTheme.current.onPrimary,
+            color = LocalMaterialTheme.current.surfaceContainerLowest.copy(alpha = 0.7f),
             shape = AbsoluteSmoothCornerShape(
                 cornerRadiusBL = rowCorners,
                 smoothnessAsPercentTR = 60,
@@ -1620,6 +1622,7 @@ private fun BottomToggleRow(
                 activeCornerRadius = rowCorners,
                 activeContentColor = LocalMaterialTheme.current.onPrimary,
                 inactiveColor = inactiveBg,
+                inactiveContentColor = inactiveContentColor,
                 onClick = onShuffleToggle,
                 iconId = R.drawable.rounded_shuffle_24,
                 contentDesc = "Aleatorio"
@@ -1637,6 +1640,7 @@ private fun BottomToggleRow(
                 activeCornerRadius = rowCorners,
                 activeContentColor = LocalMaterialTheme.current.onSecondary,
                 inactiveColor = inactiveBg,
+                inactiveContentColor = inactiveContentColor,
                 onClick = onRepeatToggle,
                 iconId = repeatIcon,
                 contentDesc = "Repetir"
@@ -1648,6 +1652,7 @@ private fun BottomToggleRow(
                 activeCornerRadius = rowCorners,
                 activeContentColor = LocalMaterialTheme.current.onTertiary,
                 inactiveColor = inactiveBg,
+                inactiveContentColor = inactiveContentColor,
                 onClick = onFavoriteToggle,
                 iconId = R.drawable.round_favorite_24,
                 contentDesc = "Favorito"
@@ -1655,5 +1660,3 @@ private fun BottomToggleRow(
         }
     }
 }
-
-
