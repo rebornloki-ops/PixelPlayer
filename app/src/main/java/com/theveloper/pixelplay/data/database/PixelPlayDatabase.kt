@@ -19,7 +19,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         FavoritesEntity::class,
         LyricsEntity::class
     ],
-    version = 14, // Incremented version for lyrics table
+    version = 15, // Incremented version for full album-art color roles + palette style cache key
     exportSchema = false
 )
 abstract class PixelPlayDatabase : RoomDatabase() {
@@ -135,6 +135,48 @@ abstract class PixelPlayDatabase : RoomDatabase() {
                 database.execSQL(
                     "INSERT INTO lyrics (songId, content) SELECT id, lyrics FROM songs WHERE lyrics IS NOT NULL AND lyrics != ''"
                 )
+            }
+        }
+
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE album_art_themes ADD COLUMN paletteStyle TEXT NOT NULL DEFAULT 'tonal_spot'"
+                )
+
+                val newRoleColumns = listOf(
+                    "surfaceBright",
+                    "surfaceDim",
+                    "surfaceContainer",
+                    "surfaceContainerHigh",
+                    "surfaceContainerHighest",
+                    "surfaceContainerLow",
+                    "surfaceContainerLowest",
+                    "primaryFixed",
+                    "primaryFixedDim",
+                    "onPrimaryFixed",
+                    "onPrimaryFixedVariant",
+                    "secondaryFixed",
+                    "secondaryFixedDim",
+                    "onSecondaryFixed",
+                    "onSecondaryFixedVariant",
+                    "tertiaryFixed",
+                    "tertiaryFixedDim",
+                    "onTertiaryFixed",
+                    "onTertiaryFixedVariant"
+                )
+
+                val prefixes = listOf("light_", "dark_")
+                prefixes.forEach { prefix ->
+                    newRoleColumns.forEach { role ->
+                        database.execSQL(
+                            "ALTER TABLE album_art_themes ADD COLUMN ${prefix}${role} TEXT NOT NULL DEFAULT '#00000000'"
+                        )
+                    }
+                }
+
+                // The table is a cache; wipe stale rows so we always regenerate with full token data.
+                database.execSQL("DELETE FROM album_art_themes")
             }
         }
     }

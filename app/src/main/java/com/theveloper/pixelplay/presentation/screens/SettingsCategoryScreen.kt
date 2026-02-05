@@ -79,6 +79,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.data.preferences.AppThemeMode
+import com.theveloper.pixelplay.data.preferences.AlbumArtPaletteStyle
 import com.theveloper.pixelplay.data.preferences.CarouselStyle
 import com.theveloper.pixelplay.data.preferences.LaunchTab
 import com.theveloper.pixelplay.data.preferences.LibraryNavigationMode
@@ -361,6 +362,18 @@ fun SettingsCategoryScreen(
                                     selectedKey = uiState.playerThemePreference,
                                     onSelectionChanged = { settingsViewModel.setPlayerThemePreference(it) },
                                     leadingIcon = { Icon(Icons.Outlined.PlayCircle, null, tint = MaterialTheme.colorScheme.secondary) }
+                                )
+                                ThemeSelectorItem(
+                                    label = "Album Art Palette Style",
+                                    description = "Pick the tonal recipe used to build the album-art theme.",
+                                    options = AlbumArtPaletteStyle.entries.associate { it.storageKey to it.label },
+                                    selectedKey = uiState.albumArtPaletteStyle.storageKey,
+                                    onSelectionChanged = {
+                                        settingsViewModel.setAlbumArtPaletteStyle(
+                                            AlbumArtPaletteStyle.fromStorageKey(it)
+                                        )
+                                    },
+                                    leadingIcon = { Icon(Icons.Outlined.Style, null, tint = MaterialTheme.colorScheme.secondary) }
                                 )
                                 ThemeSelectorItem(
                                     label = "Carousel Style",

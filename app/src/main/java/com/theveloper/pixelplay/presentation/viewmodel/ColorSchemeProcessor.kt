@@ -3,35 +3,31 @@ package com.theveloper.pixelplay.presentation.viewmodel
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.net.Uri
 import android.os.Trace
 import android.util.LruCache
 import androidx.compose.material3.ColorScheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.createBitmap
 import coil.imageLoader
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Size
+import com.theveloper.pixelplay.data.preferences.AlbumArtPaletteStyle
 import com.theveloper.pixelplay.data.database.AlbumArtThemeDao
 import com.theveloper.pixelplay.data.database.AlbumArtThemeEntity
 import com.theveloper.pixelplay.data.database.StoredColorSchemeValues
 import com.theveloper.pixelplay.data.database.toComposeColor
-import com.theveloper.pixelplay.ui.theme.DarkColorScheme
-import com.theveloper.pixelplay.ui.theme.LightColorScheme
 import com.theveloper.pixelplay.ui.theme.extractSeedColor
 import com.theveloper.pixelplay.ui.theme.generateColorSchemeFromSeed
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 
 /**
  * Efficient color scheme processor for album art.
@@ -70,30 +66,42 @@ class ColorSchemeProcessor @Inject constructor(
      * Checks memory cache first, then database, then generates new.
      * @param forceRefresh If true, bypasses caches and forces regeneration from source image.
      */
-    suspend fun getOrGenerateColorScheme(albumArtUri: String, forceRefresh: Boolean = false): ColorSchemePair? {
+    suspend fun getOrGenerateColorScheme(
+        albumArtUri: String,
+        paletteStyle: AlbumArtPaletteStyle,
+        forceRefresh: Boolean = false
+    ): ColorSchemePair? {
         Trace.beginSection("ColorSchemeProcessor.getOrGenerate")
         try {
+            val cacheKey = buildCacheKey(albumArtUri, paletteStyle)
             if (!forceRefresh) {
                 // 1. Check memory cache first (fastest)
-                memoryCache.get(albumArtUri)?.let {
+                memoryCache.get(cacheKey)?.let {
                     Trace.endSection()
                     return it
                 }
 
                 // 2. Check database cache
                 val cachedEntity = withContext(Dispatchers.IO) {
-                    albumArtThemeDao.getThemeByUri(albumArtUri)
+                    albumArtThemeDao.getThemeByUriAndStyle(
+                        albumArtUri,
+                        paletteStyleCacheKey(paletteStyle)
+                    )
                 }
                 if (cachedEntity != null) {
                     val schemePair = mapEntityToColorSchemePair(cachedEntity)
-                    memoryCache.put(albumArtUri, schemePair)
+                    memoryCache.put(cacheKey, schemePair)
                     Trace.endSection()
                     return schemePair
                 }
             }
 
             // 3. Generate new color scheme
-            return generateAndCacheColorScheme(albumArtUri, forceRefresh)
+            return generateAndCacheColorScheme(
+                albumArtUri = albumArtUri,
+                paletteStyle = paletteStyle,
+                forceRefresh = forceRefresh
+            )
         } finally {
             Trace.endSection()
         }
@@ -103,9 +111,14 @@ class ColorSchemeProcessor @Inject constructor(
      * Generates a color scheme from the album art bitmap.
      * All processing done on Default dispatcher for CPU-bound work.
      */
-    private suspend fun generateAndCacheColorScheme(albumArtUri: String, forceRefresh: Boolean = false): ColorSchemePair? {
+    private suspend fun generateAndCacheColorScheme(
+        albumArtUri: String,
+        paletteStyle: AlbumArtPaletteStyle,
+        forceRefresh: Boolean = false
+    ): ColorSchemePair? {
         Trace.beginSection("ColorSchemeProcessor.generate")
         try {
+            val cacheKey = buildCacheKey(albumArtUri, paletteStyle)
             // Load bitmap on IO dispatcher
             val bitmap = withContext(Dispatchers.IO) {
                 loadBitmapForColorExtraction(albumArtUri, forceRefresh)
@@ -114,16 +127,23 @@ class ColorSchemeProcessor @Inject constructor(
             // Extract colors on Default dispatcher (CPU-bound)
             val schemePair = withContext(Dispatchers.Default) {
                 val seed = extractSeedColor(bitmap)
-                generateColorSchemeFromSeed(seed)
+                generateColorSchemeFromSeed(
+                    seedColor = seed,
+                    paletteStyle = paletteStyle
+                )
             }
 
             // Cache to memory
-            memoryCache.put(albumArtUri, schemePair)
+            memoryCache.put(cacheKey, schemePair)
 
             // Persist to database (fire and forget on IO)
             withContext(Dispatchers.IO) {
                 albumArtThemeDao.insertTheme(
-                    mapColorSchemePairToEntity(albumArtUri, schemePair)
+                    mapColorSchemePairToEntity(
+                        uri = albumArtUri,
+                        paletteStyle = paletteStyle,
+                        pair = schemePair
+                    )
                 )
             }
 
@@ -203,21 +223,32 @@ class ColorSchemeProcessor @Inject constructor(
      * Removes a specific URI from the cache.
      */
     fun evictFromCache(uri: String) {
-        memoryCache.remove(uri)
+        removeUriFromMemoryCache(uri)
     }
 
     /**
      * Invalidates the color scheme for a URI in both memory and database.
      */
     suspend fun invalidateScheme(uri: String) {
-        memoryCache.remove(uri)
+        removeUriFromMemoryCache(uri)
         withContext(Dispatchers.IO) {
             albumArtThemeDao.deleteThemesByUris(listOf(uri))
         }
     }
 
+    private fun removeUriFromMemoryCache(uri: String) {
+        val prefix = "$uri$CACHE_KEY_SEPARATOR"
+        memoryCache.snapshot().keys
+            .filter { key -> key == uri || key.startsWith(prefix) }
+            .forEach { key -> memoryCache.remove(key) }
+    }
+
     // Mapping functions
-    private fun mapColorSchemePairToEntity(uri: String, pair: ColorSchemePair): AlbumArtThemeEntity {
+    private fun mapColorSchemePairToEntity(
+        uri: String,
+        paletteStyle: AlbumArtPaletteStyle,
+        pair: ColorSchemePair
+    ): AlbumArtThemeEntity {
         fun mapScheme(cs: ColorScheme) = StoredColorSchemeValues(
             primary = cs.primary.toHexString(),
             onPrimary = cs.onPrimary.toHexString(),
@@ -247,18 +278,42 @@ class ColorSchemeProcessor @Inject constructor(
             inverseOnSurface = cs.inverseOnSurface.toHexString(),
             surfaceTint = cs.surfaceTint.toHexString(),
             outlineVariant = cs.outlineVariant.toHexString(),
-            scrim = cs.scrim.toHexString()
+            scrim = cs.scrim.toHexString(),
+            surfaceBright = cs.surfaceBright.toHexString(),
+            surfaceDim = cs.surfaceDim.toHexString(),
+            surfaceContainer = cs.surfaceContainer.toHexString(),
+            surfaceContainerHigh = cs.surfaceContainerHigh.toHexString(),
+            surfaceContainerHighest = cs.surfaceContainerHighest.toHexString(),
+            surfaceContainerLow = cs.surfaceContainerLow.toHexString(),
+            surfaceContainerLowest = cs.surfaceContainerLowest.toHexString(),
+            primaryFixed = cs.primaryFixed.toHexString(),
+            primaryFixedDim = cs.primaryFixedDim.toHexString(),
+            onPrimaryFixed = cs.onPrimaryFixed.toHexString(),
+            onPrimaryFixedVariant = cs.onPrimaryFixedVariant.toHexString(),
+            secondaryFixed = cs.secondaryFixed.toHexString(),
+            secondaryFixedDim = cs.secondaryFixedDim.toHexString(),
+            onSecondaryFixed = cs.onSecondaryFixed.toHexString(),
+            onSecondaryFixedVariant = cs.onSecondaryFixedVariant.toHexString(),
+            tertiaryFixed = cs.tertiaryFixed.toHexString(),
+            tertiaryFixedDim = cs.tertiaryFixedDim.toHexString(),
+            onTertiaryFixed = cs.onTertiaryFixed.toHexString(),
+            onTertiaryFixedVariant = cs.onTertiaryFixedVariant.toHexString()
         )
-        return AlbumArtThemeEntity(uri, mapScheme(pair.light), mapScheme(pair.dark))
+        return AlbumArtThemeEntity(
+            albumArtUriString = uri,
+            paletteStyle = paletteStyleCacheKey(paletteStyle),
+            lightThemeValues = mapScheme(pair.light),
+            darkThemeValues = mapScheme(pair.dark)
+        )
     }
 
     private fun mapEntityToColorSchemePair(entity: AlbumArtThemeEntity): ColorSchemePair {
-        val placeholder = Color.Magenta
-        fun mapStored(sv: StoredColorSchemeValues, isDark: Boolean) = ColorScheme(
+        fun mapStored(sv: StoredColorSchemeValues) = ColorScheme(
             primary = sv.primary.toComposeColor(),
             onPrimary = sv.onPrimary.toComposeColor(),
             primaryContainer = sv.primaryContainer.toComposeColor(),
             onPrimaryContainer = sv.onPrimaryContainer.toComposeColor(),
+            inversePrimary = sv.inversePrimary.toComposeColor(),
             secondary = sv.secondary.toComposeColor(),
             onSecondary = sv.onSecondary.toComposeColor(),
             secondaryContainer = sv.secondaryContainer.toComposeColor(),
@@ -278,35 +333,34 @@ class ColorSchemeProcessor @Inject constructor(
             outline = sv.outline.toComposeColor(),
             errorContainer = sv.errorContainer.toComposeColor(),
             onErrorContainer = sv.onErrorContainer.toComposeColor(),
-            inversePrimary = sv.inversePrimary.toComposeColor(),
             inverseSurface = sv.inverseSurface.toComposeColor(),
             inverseOnSurface = sv.inverseOnSurface.toComposeColor(),
             surfaceTint = sv.surfaceTint.toComposeColor(),
             outlineVariant = sv.outlineVariant.toComposeColor(),
             scrim = sv.scrim.toComposeColor(),
-            surfaceBright = placeholder,
-            surfaceDim = placeholder,
-            surfaceContainer = placeholder,
-            surfaceContainerHigh = placeholder,
-            surfaceContainerHighest = placeholder,
-            surfaceContainerLow = placeholder,
-            surfaceContainerLowest = placeholder,
-            primaryFixed = placeholder,
-            primaryFixedDim = placeholder,
-            onPrimaryFixed = placeholder,
-            onPrimaryFixedVariant = placeholder,
-            secondaryFixed = placeholder,
-            secondaryFixedDim = placeholder,
-            onSecondaryFixed = placeholder,
-            onSecondaryFixedVariant = placeholder,
-            tertiaryFixed = placeholder,
-            tertiaryFixedDim = placeholder,
-            onTertiaryFixed = placeholder,
-            onTertiaryFixedVariant = placeholder
+            surfaceBright = sv.surfaceBright.toComposeColor(),
+            surfaceDim = sv.surfaceDim.toComposeColor(),
+            surfaceContainer = sv.surfaceContainer.toComposeColor(),
+            surfaceContainerHigh = sv.surfaceContainerHigh.toComposeColor(),
+            surfaceContainerHighest = sv.surfaceContainerHighest.toComposeColor(),
+            surfaceContainerLow = sv.surfaceContainerLow.toComposeColor(),
+            surfaceContainerLowest = sv.surfaceContainerLowest.toComposeColor(),
+            primaryFixed = sv.primaryFixed.toComposeColor(),
+            primaryFixedDim = sv.primaryFixedDim.toComposeColor(),
+            onPrimaryFixed = sv.onPrimaryFixed.toComposeColor(),
+            onPrimaryFixedVariant = sv.onPrimaryFixedVariant.toComposeColor(),
+            secondaryFixed = sv.secondaryFixed.toComposeColor(),
+            secondaryFixedDim = sv.secondaryFixedDim.toComposeColor(),
+            onSecondaryFixed = sv.onSecondaryFixed.toComposeColor(),
+            onSecondaryFixedVariant = sv.onSecondaryFixedVariant.toComposeColor(),
+            tertiaryFixed = sv.tertiaryFixed.toComposeColor(),
+            tertiaryFixedDim = sv.tertiaryFixedDim.toComposeColor(),
+            onTertiaryFixed = sv.onTertiaryFixed.toComposeColor(),
+            onTertiaryFixedVariant = sv.onTertiaryFixedVariant.toComposeColor()
         )
         return ColorSchemePair(
-            light = mapStored(entity.lightThemeValues, false),
-            dark = mapStored(entity.darkThemeValues, true)
+            light = mapStored(entity.lightThemeValues),
+            dark = mapStored(entity.darkThemeValues)
         )
     }
 
@@ -314,7 +368,17 @@ class ColorSchemeProcessor @Inject constructor(
         return String.format("#%08X", toArgb())
     }
 
+    private fun buildCacheKey(uri: String, paletteStyle: AlbumArtPaletteStyle): String {
+        return "$uri$CACHE_KEY_SEPARATOR${paletteStyleCacheKey(paletteStyle)}"
+    }
+
+    private fun paletteStyleCacheKey(paletteStyle: AlbumArtPaletteStyle): String {
+        return "${paletteStyle.storageKey}$CACHE_KEY_SEPARATOR$CACHE_ALGORITHM_VERSION"
+    }
+
     companion object {
         private const val TAG = "ColorSchemeProcessor"
+        private const val CACHE_KEY_SEPARATOR = "|"
+        private const val CACHE_ALGORITHM_VERSION = "algo_v2"
     }
 }

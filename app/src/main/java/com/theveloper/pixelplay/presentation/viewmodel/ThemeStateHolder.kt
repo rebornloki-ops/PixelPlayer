@@ -3,6 +3,7 @@ package com.theveloper.pixelplay.presentation.viewmodel
 import android.net.Uri
 import android.os.Trace
 import androidx.compose.ui.graphics.Color
+import com.theveloper.pixelplay.data.preferences.AlbumArtPaletteStyle
 import com.theveloper.pixelplay.data.preferences.UserPreferencesRepository
 import com.theveloper.pixelplay.ui.theme.DarkColorScheme
 import kotlinx.collections.immutable.ImmutableList
@@ -15,7 +16,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -29,6 +29,8 @@ class ThemeStateHolder @Inject constructor(
 ) {
 
     private var scope: CoroutineScope? = null
+    @Volatile
+    private var currentPaletteStyle: AlbumArtPaletteStyle = AlbumArtPaletteStyle.default
 
     private val _currentAlbumArtColorSchemePair = MutableStateFlow<ColorSchemePair?>(null)
     val currentAlbumArtColorSchemePair: StateFlow<ColorSchemePair?> = _currentAlbumArtColorSchemePair.asStateFlow()
@@ -55,7 +57,24 @@ class ThemeStateHolder @Inject constructor(
     fun initialize(scope: CoroutineScope) {
         this.scope = scope
         // Re-scope the activePlayerColorSchemePair if possible, or just rely on the injected scope for processing
-        
+
+        scope.launch {
+            userPreferencesRepository.albumArtPaletteStyleFlow.collect { style ->
+                val styleChanged = currentPaletteStyle != style
+                currentPaletteStyle = style
+
+                if (!styleChanged) return@collect
+
+                val uri = currentAlbumArtUri ?: return@collect
+                val refreshedScheme = colorSchemeProcessor.getOrGenerateColorScheme(
+                    albumArtUri = uri,
+                    paletteStyle = style
+                )
+                _currentAlbumArtColorSchemePair.value = refreshedScheme
+                individualAlbumColorSchemes[uri]?.value = refreshedScheme
+            }
+        }
+
         scope.launch {
             activePlayerColorSchemePair.collect { schemePair ->
                  updateLavaLampColors(schemePair)
@@ -78,7 +97,10 @@ class ThemeStateHolder @Inject constructor(
 
             val uriString = albumArtUriAsUri.toString()
             // Use the optimized ColorSchemeProcessor with LRU cache
-            val schemePair = colorSchemeProcessor.getOrGenerateColorScheme(uriString)
+            val schemePair = colorSchemeProcessor.getOrGenerateColorScheme(
+                albumArtUri = uriString,
+                paletteStyle = currentPaletteStyle
+            )
 
             if (!isPreload && currentSongUriString == uriString) {
                 _currentAlbumArtColorSchemePair.value = schemePair
@@ -120,7 +142,10 @@ class ThemeStateHolder @Inject constructor(
         // Trigger generation asynchronously
         scope?.launch(Dispatchers.IO) {
             try {
-                val scheme = colorSchemeProcessor.getOrGenerateColorScheme(uriString)
+                val scheme = colorSchemeProcessor.getOrGenerateColorScheme(
+                    albumArtUri = uriString,
+                    paletteStyle = currentPaletteStyle
+                )
                 newFlow.value = scheme
             } catch (e: Exception) {
                 // Ignore or log
@@ -131,7 +156,10 @@ class ThemeStateHolder @Inject constructor(
     }
     
     suspend fun getOrGenerateColorScheme(uriString: String): ColorSchemePair? {
-         return colorSchemeProcessor.getOrGenerateColorScheme(uriString)
+         return colorSchemeProcessor.getOrGenerateColorScheme(
+             albumArtUri = uriString,
+             paletteStyle = currentPaletteStyle
+         )
     }
 
     suspend fun forceRegenerateColorScheme(uriString: String) {
@@ -140,7 +168,11 @@ class ThemeStateHolder @Inject constructor(
          
          colorSchemeProcessor.invalidateScheme(uriString)
          
-         val newScheme = colorSchemeProcessor.getOrGenerateColorScheme(uriString, forceRefresh = true)
+         val newScheme = colorSchemeProcessor.getOrGenerateColorScheme(
+             albumArtUri = uriString,
+             paletteStyle = currentPaletteStyle,
+             forceRefresh = true
+         )
 
          // Iterate if there is an active flow for this URI and update it
          val activeFlow = individualAlbumColorSchemes[uriString]

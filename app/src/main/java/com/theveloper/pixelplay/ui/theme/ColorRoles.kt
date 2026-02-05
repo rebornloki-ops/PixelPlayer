@@ -2,267 +2,335 @@ package com.theveloper.pixelplay.ui.theme
 
 import android.graphics.Bitmap
 import android.util.LruCache
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
-import androidx.core.graphics.ColorUtils
-import androidx.palette.graphics.Palette
+import androidx.compose.ui.graphics.toArgb
 import com.theveloper.pixelplay.presentation.viewmodel.ColorSchemePair
-import kotlin.math.max
+import com.google.android.material.color.utilities.DynamicScheme
+import com.google.android.material.color.utilities.Hct
+import com.google.android.material.color.utilities.MathUtils
+import com.google.android.material.color.utilities.QuantizerCelebi
+import com.google.android.material.color.utilities.SchemeExpressive
+import com.google.android.material.color.utilities.SchemeFruitSalad
+import com.google.android.material.color.utilities.SchemeMonochrome
+import com.google.android.material.color.utilities.SchemeNeutral
+import com.google.android.material.color.utilities.SchemeTonalSpot
+import com.google.android.material.color.utilities.SchemeVibrant
+import com.theveloper.pixelplay.data.preferences.AlbumArtPaletteStyle
 import androidx.core.graphics.scale
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.roundToInt
 
-private fun Color.toHct(): Triple<Float, Float, Float> {
-    val hsl = FloatArray(3)
-    ColorUtils.RGBToHSL(red.toByteInt(), green.toByteInt(), blue.toByteInt(), hsl)
-    return Triple(hsl[0], hsl[1], hsl[2])
+data class ColorScoringConfig(
+    val targetChroma: Double = 48.0,
+    val weightProportion: Double = 0.7,
+    val weightChromaAbove: Double = 0.3,
+    val weightChromaBelow: Double = 0.1,
+    val cutoffChroma: Double = 5.0,
+    val cutoffExcitedProportion: Double = 0.01,
+    val maxColorCount: Int = 4,
+    val maxHueDifference: Int = 90,
+    val minHueDifference: Int = 15
+)
+
+data class ColorExtractionConfig(
+    val downscaleMaxDimension: Int = 128,
+    val quantizerMaxColors: Int = 128,
+    val scoring: ColorScoringConfig = ColorScoringConfig()
+)
+
+private data class ScoredHct(
+    val hct: Hct,
+    val score: Double
+)
+
+private val extractedColorCache = LruCache<Int, Color>(32)
+private const val GRAYSCALE_CHROMA_THRESHOLD = 10.0
+private const val NEUTRAL_PIXEL_CHROMA_THRESHOLD = 8.0
+private const val HIGH_CHROMA_THRESHOLD = 18.0
+private const val REQUIRED_NEUTRAL_POPULATION = 0.92
+private const val MAX_HIGH_CHROMA_POPULATION = 0.03
+private const val MAX_WEIGHTED_CHROMA_FOR_NEUTRAL = 9.0
+
+fun extractSeedColor(
+    bitmap: Bitmap,
+    config: ColorExtractionConfig = ColorExtractionConfig()
+): Color {
+    val cacheKey = 31 * bitmap.hashCode() + config.hashCode()
+    extractedColorCache.get(cacheKey)?.let { return it }
+
+    val workingBitmap = resizeForExtraction(bitmap, config.downscaleMaxDimension)
+
+    val seedColor = runCatching {
+        val pixels = IntArray(workingBitmap.width * workingBitmap.height)
+        workingBitmap.getPixels(
+            pixels,
+            0,
+            workingBitmap.width,
+            0,
+            0,
+            workingBitmap.width,
+            workingBitmap.height
+        )
+
+        val fallbackArgb = averageColorArgb(pixels)
+        val quantized = QuantizerCelebi.quantize(pixels, config.quantizerMaxColors)
+        val mostlyNeutralArtwork = isMostlyNeutralArtwork(quantized)
+
+        if (mostlyNeutralArtwork) {
+            val avgHct = Hct.fromInt(fallbackArgb)
+            val neutralSeed = Hct.from(avgHct.hue, 0.0, avgHct.tone).toInt()
+            return@runCatching Color(neutralSeed)
+        }
+
+        val rankedSeeds = scoreQuantizedColors(
+            colorsToPopulation = quantized,
+            scoring = config.scoring,
+            fallbackColorArgb = fallbackArgb
+        )
+
+        Color(rankedSeeds.firstOrNull() ?: fallbackArgb)
+    }.getOrElse { DarkColorScheme.primary }
+
+    extractedColorCache.put(cacheKey, seedColor)
+    if (workingBitmap !== bitmap) {
+        workingBitmap.recycle()
+    }
+    return seedColor
 }
 
-private fun hctToColor(hue: Float, chroma: Float, tone: Float): Color {
-    val hsl = floatArrayOf(hue.coerceIn(0f, 360f), chroma.coerceIn(0f, 1f), tone.coerceIn(0f, 1f))
-    return Color(ColorUtils.HSLToColor(hsl))
+fun generateColorSchemeFromSeed(
+    seedColor: Color,
+    paletteStyle: AlbumArtPaletteStyle = AlbumArtPaletteStyle.default
+): ColorSchemePair {
+    return runCatching {
+        val sourceHct = Hct.fromInt(seedColor.toArgb())
+        val shouldForceNeutral = sourceHct.chroma < GRAYSCALE_CHROMA_THRESHOLD
+
+        val lightScheme = createDynamicScheme(
+            sourceHct = sourceHct,
+            paletteStyle = paletteStyle,
+            isDark = false,
+            forceNeutral = shouldForceNeutral
+        ).toComposeColorScheme()
+        val darkScheme = createDynamicScheme(
+            sourceHct = sourceHct,
+            paletteStyle = paletteStyle,
+            isDark = true,
+            forceNeutral = shouldForceNeutral
+        ).toComposeColorScheme()
+        ColorSchemePair(lightScheme, darkScheme)
+    }.getOrElse {
+        ColorSchemePair(LightColorScheme, DarkColorScheme)
+    }
 }
 
-private fun Color.tone(targetTone: Int): Color {
-    val (_, chroma, _) = this.toHct()
-    return hctToColor(this.toHct().first, chroma, targetTone / 100f)
-}
-
-private fun Color.withChroma(targetChroma: Float): Color {
-    val (hue, _, tone) = this.toHct()
-    return hctToColor(hue, targetChroma.coerceIn(0f,1f), tone)
-}
-
-private fun Color.withMinChroma(minChroma: Float, maxChroma: Float = 0.5f): Color {
-    val (hue, chroma, tone) = this.toHct()
-    val boostedChroma = max(chroma, minChroma).coerceAtMost(maxChroma)
-    val balancedTone = tone.coerceIn(0.32f, 0.82f)
-    return hctToColor(hue, boostedChroma, balancedTone)
-}
-
-private fun Float.toByteInt(): Int = (this * 255f).toInt()
-
-private val extractedColorCache = LruCache<Int, Color>(20)
-
-// --- Optimized Color Scheme Generation ---
-fun extractSeedColor(bitmap: Bitmap): Color {
-    val bitmapHash = bitmap.hashCode()
-
-    extractedColorCache.get(bitmapHash)?.let { return it }
-
-    val scaledBitmap = if (bitmap.width > 200 || bitmap.height > 200) {
-        val scale = 200f / max(bitmap.width, bitmap.height)
-        val scaledWidth = (bitmap.width * scale).toInt()
-        val scaledHeight = (bitmap.height * scale).toInt()
-        bitmap.scale(scaledWidth, scaledHeight)
-    } else {
-        bitmap
-    }
-
-    val palette = Palette.Builder(scaledBitmap)
-        .maximumColorCount(16)
-        .resizeBitmapArea(0)
-        .clearFilters()
-        .generate()
-
-    val color = palette.vibrantSwatch?.rgb?.let { Color(it) }
-        ?: palette.mutedSwatch?.rgb?.let { Color(it) }
-        ?: palette.dominantSwatch?.rgb?.let { Color(it) }
-        ?: DarkColorScheme.primary // Fallback
-
-    // Store in cache
-    extractedColorCache.put(bitmapHash, color)
-
-    if (scaledBitmap != bitmap) {
-        scaledBitmap.recycle()
-    }
-
-    return color
-}
-
-fun generateColorSchemeFromSeed(seedColor: Color): ColorSchemePair {
-    val (_, originalChroma, _) = seedColor.toHct()
-    
-    // If original chroma is low (grayscale/monochrome/desaturated), preserve neutrality
-    // instead of forcing vibrant colors. Threshold of 0.20 catches most grayscale images
-    // even when Palette extracts slight color hints
-    val isGrayscale = originalChroma < 0.20f
-    
-    // Keep a vivid seed for light and a slightly deeper variant for dark to preserve contrast
-    // For grayscale images, use zero chroma to maintain truly neutral tones (no color tint)
-    val lightSeed = if (isGrayscale) {
-        seedColor.withChroma(0f) // Completely neutral - no color tint
-    } else {
-        seedColor.withMinChroma(minChroma = 0.46f, maxChroma = 0.72f)
-    }
-    
-    val darkSeed = if (isGrayscale) {
-        seedColor.withChroma(0f) // Completely neutral - no color tint
-    } else {
-        seedColor.withMinChroma(minChroma = 0.36f, maxChroma = 0.6f)
-    }
-
-    // --- Tonal Palettes ---
-    // Primary Tones
-    val lightPrimary10 = lightSeed.tone(10)
-    val lightPrimary40 = lightSeed.tone(40)
-    val lightPrimary48 = lightSeed.tone(48)
-    val lightPrimary56 = lightSeed.tone(56)
-    val lightPrimary64 = lightSeed.tone(64)
-    val lightPrimary76 = lightSeed.tone(76)
-    val lightPrimary84 = lightSeed.tone(84)
-    val lightPrimary90 = lightSeed.tone(90)
-    val lightPrimary92 = lightSeed.tone(92)
-    val lightPrimary95 = lightSeed.tone(95)
-
-    val darkPrimary18 = darkSeed.tone(18)
-    val darkPrimary26 = darkSeed.tone(26)
-    val darkPrimary36 = darkSeed.tone(36)
-    val darkPrimary52 = darkSeed.tone(52)
-    val darkPrimary64 = darkSeed.tone(64)
-    val darkPrimary78 = darkSeed.tone(78)
-    val darkPrimary92 = darkSeed.tone(92)
-
-    // Secondary Tones (Shift hue, adjust chroma) - For grayscale, use neutral
-    val secondarySeed = if (isGrayscale) {
-        lightSeed.withChroma(0f) // Neutral gray for grayscale images
-    } else {
-        hctToColor((lightSeed.toHct().first + 38f) % 360f, 0.36f, lightSeed.toHct().third)
-            .withMinChroma(0.32f, maxChroma = 0.54f)
-    }
-    val lightSecondary10 = secondarySeed.tone(10)
-    val lightSecondary40 = secondarySeed.tone(40)
-    val lightSecondary46 = secondarySeed.tone(46)
-    val lightSecondary54 = secondarySeed.tone(54)
-    val lightSecondary64 = secondarySeed.tone(64)
-    val lightSecondary76 = secondarySeed.tone(76)
-    val lightSecondary86 = secondarySeed.tone(86)
-    val lightSecondary90 = secondarySeed.tone(90)
-    val lightSecondary94 = secondarySeed.tone(94)
-    val lightSecondary95 = secondarySeed.tone(95)
-
-    val darkSecondary22 = secondarySeed.tone(22)
-    val darkSecondary30 = secondarySeed.tone(30)
-    val darkSecondary42 = secondarySeed.tone(42)
-    val darkSecondary58 = secondarySeed.tone(58)
-    val darkSecondary70 = secondarySeed.tone(70)
-    val darkSecondary82 = secondarySeed.tone(82)
-
-    // Tertiary Tones (Shift hue differently, adjust chroma) - For grayscale, use neutral
-    val tertiarySeed = if (isGrayscale) {
-        lightSeed.withChroma(0f) // Neutral gray for grayscale images
-    } else {
-        hctToColor((lightSeed.toHct().first + 115f) % 360f, 0.38f, lightSeed.toHct().third)
-            .withMinChroma(0.3f, maxChroma = 0.56f)
-    }
-    val lightTertiary10 = tertiarySeed.tone(10)
-    val lightTertiary40 = tertiarySeed.tone(40)
-    val lightTertiary48 = tertiarySeed.tone(48)
-    val lightTertiary58 = tertiarySeed.tone(58)
-    val lightTertiary70 = tertiarySeed.tone(70)
-    val lightTertiary82 = tertiarySeed.tone(82)
-    val lightTertiary90 = tertiarySeed.tone(90)
-    val lightTertiary96 = tertiarySeed.tone(96)
-    val lightTertiary95 = tertiarySeed.tone(95)
-
-    val darkTertiary22 = tertiarySeed.tone(22)
-    val darkTertiary32 = tertiarySeed.tone(32)
-    val darkTertiary44 = tertiarySeed.tone(44)
-    val darkTertiary58 = tertiarySeed.tone(58)
-    val darkTertiary72 = tertiarySeed.tone(72)
-    val darkTertiary84 = tertiarySeed.tone(84)
-
-    // Neutral Tones (Very low chroma from seed) - For grayscale, use pure neutral
-    val lightNeutralSeed = if (isGrayscale) lightSeed.withChroma(0f) else lightSeed.withChroma(0.1f)
-    val lightNeutral4 = lightNeutralSeed.tone(4)
-    val lightNeutral10 = lightNeutralSeed.tone(10)
-    val lightNeutral16 = lightNeutralSeed.tone(16)
-    val lightNeutral22 = lightNeutralSeed.tone(22)
-    val lightNeutral30 = lightNeutralSeed.tone(30)
-    val lightNeutral50 = lightNeutralSeed.tone(50)
-    val lightNeutral84 = lightNeutralSeed.tone(84)
-    val lightNeutral88 = lightNeutralSeed.tone(88)
-    val lightNeutral90 = lightNeutralSeed.tone(90)
-    val lightNeutral92 = lightNeutralSeed.tone(92)
-    val lightNeutral95 = lightNeutralSeed.tone(95)
-    val lightNeutral98 = lightNeutralSeed.tone(98)
-    val lightNeutral99 = lightNeutralSeed.tone(99)
-
-    val darkNeutralSeed = if (isGrayscale) darkSeed.withChroma(0f) else darkSeed.withChroma(0.08f)
-    val darkNeutral6 = darkNeutralSeed.tone(6) // deeper dark surface
-    val darkNeutral10 = darkNeutralSeed.tone(10) // Surface Dark, Background Dark
-    val darkNeutral16 = darkNeutralSeed.tone(16)
-    val darkNeutral22 = darkNeutralSeed.tone(22)
-    val darkNeutral32 = darkNeutralSeed.tone(32) // SurfaceVariant Dark
-    val darkNeutral78 = darkNeutralSeed.tone(78)
-    val darkNeutral84 = darkNeutralSeed.tone(84)
-    val darkNeutral88 = darkNeutralSeed.tone(88)
-    val darkNeutral92 = darkNeutralSeed.tone(92)
-
-
-    // Light Color Scheme (Refined for better contrast and legibility)
-    val lightScheme = lightColorScheme(
-        primary = lightPrimary40, // Standard M3 Primary (Tone 40)
-        onPrimary = lightPrimary95, // Tinted White (Tone 95)
-        primaryContainer = lightPrimary90, // Pastel Container (Tone 90)
-        onPrimaryContainer = lightPrimary10, // High Contrast Text (Tone 10)
-        secondary = lightSecondary40,
-        onSecondary = lightSecondary95,
-        secondaryContainer = lightSecondary90,
-        onSecondaryContainer = lightSecondary10,
-        tertiary = lightTertiary40,
-        onTertiary = lightTertiary95,
-        tertiaryContainer = lightTertiary90,
-        onTertiaryContainer = lightTertiary10,
-        error = Color(0xFFBA1A1A), // M3 Defaults
-        onError = Color.White,
-        errorContainer = Color(0xFFFFDAD6),
-        onErrorContainer = Color(0xFF410002),
-        background = lightNeutral99, // Clean light background
-        onBackground = lightNeutral10, // Dark text
-        surface = lightNeutral99, // Clean light surface
-        onSurface = lightNeutral10, // Dark text
-        surfaceVariant = lightNeutral90, // Slightly darker surface for differentiation
-        onSurfaceVariant = lightNeutral30, // Contrast for variant
-        outline = lightNeutral50,
-        inverseOnSurface = lightNeutral95,
-        inverseSurface = lightNeutral22,
-        inversePrimary = lightPrimary84, // Lighter for inverse
-        surfaceTint = lightPrimary40,
-        outlineVariant = lightNeutral84,
-        scrim = Color.Black
+private fun resizeForExtraction(bitmap: Bitmap, maxDimension: Int): Bitmap {
+    if (maxDimension <= 0) return bitmap
+    if (bitmap.width <= maxDimension && bitmap.height <= maxDimension) return bitmap
+    val scale = maxDimension.toFloat() / max(bitmap.width, bitmap.height).toFloat()
+    return bitmap.scale(
+        width = (bitmap.width * scale).roundToInt().coerceAtLeast(1),
+        height = (bitmap.height * scale).roundToInt().coerceAtLeast(1)
     )
+}
 
-    // Dark Color Scheme
-    val darkScheme = darkColorScheme(
-        primary = darkPrimary78,
-        onPrimary = darkPrimary18,
-        primaryContainer = darkPrimary26,
-        onPrimaryContainer = darkPrimary92,
-        secondary = darkSecondary70,
-        onSecondary = darkSecondary22,
-        secondaryContainer = darkSecondary42,
-        onSecondaryContainer = darkSecondary82,
-        tertiary = darkTertiary72,
-        onTertiary = darkTertiary22,
-        tertiaryContainer = darkTertiary44,
-        onTertiaryContainer = darkTertiary84,
-        error = Color(0xFFFFB4AB), // M3 Defaults
-        onError = Color(0xFF690005),
-        errorContainer = Color(0xFF93000A),
-        onErrorContainer = Color(0xFFFFDAD6),
-        background = darkNeutral6, // deeper background for stronger separation
-        onBackground = darkNeutral92,
-        surface = darkNeutral10,
-        onSurface = darkNeutral92,
-        surfaceVariant = darkNeutral32,
-        onSurfaceVariant = darkNeutral78,
-        outline = darkNeutral84,
-        inverseOnSurface = darkNeutral22,
-        inverseSurface = darkNeutral88,
-        inversePrimary = darkPrimary52,
-        surfaceTint = darkPrimary78,
-        outlineVariant = darkNeutral32,
-        scrim = Color.Black
+private fun scoreQuantizedColors(
+    colorsToPopulation: Map<Int, Int>,
+    scoring: ColorScoringConfig,
+    fallbackColorArgb: Int
+): List<Int> {
+    if (colorsToPopulation.isEmpty()) return listOf(fallbackColorArgb)
+
+    val colorsHct = ArrayList<Hct>(colorsToPopulation.size)
+    val huePopulation = IntArray(360)
+    var populationSum = 0.0
+
+    for ((argb, population) in colorsToPopulation) {
+        if (population <= 0) continue
+        val hct = Hct.fromInt(argb)
+        colorsHct.add(hct)
+        val hue = MathUtils.sanitizeDegreesInt(floor(hct.hue).toInt())
+        huePopulation[hue] += population
+        populationSum += population.toDouble()
+    }
+
+    if (populationSum <= 0.0) return listOf(fallbackColorArgb)
+
+    val hueExcitedProportions = DoubleArray(360)
+    for (hue in 0 until 360) {
+        val proportion = huePopulation[hue] / populationSum
+        for (neighbor in hue - 14..hue + 15) {
+            val wrappedHue = MathUtils.sanitizeDegreesInt(neighbor)
+            hueExcitedProportions[wrappedHue] += proportion
+        }
+    }
+
+    val scoredColors = ArrayList<ScoredHct>(colorsHct.size)
+    for (hct in colorsHct) {
+        val hue = MathUtils.sanitizeDegreesInt(hct.hue.roundToInt())
+        val excitedProportion = hueExcitedProportions[hue]
+        if (hct.chroma < scoring.cutoffChroma || excitedProportion <= scoring.cutoffExcitedProportion) {
+            continue
+        }
+
+        val proportionScore = excitedProportion * 100.0 * scoring.weightProportion
+        val chromaWeight =
+            if (hct.chroma < scoring.targetChroma) scoring.weightChromaBelow else scoring.weightChromaAbove
+        val chromaScore = (hct.chroma - scoring.targetChroma) * chromaWeight
+        scoredColors.add(ScoredHct(hct, proportionScore + chromaScore))
+    }
+
+    if (scoredColors.isEmpty()) return listOf(fallbackColorArgb)
+    scoredColors.sortByDescending { it.score }
+
+    val maxHueDifference = scoring.maxHueDifference.coerceAtLeast(scoring.minHueDifference)
+    val minHueDifference = scoring.minHueDifference.coerceAtLeast(1)
+    val desiredColorCount = scoring.maxColorCount.coerceAtLeast(1)
+    val chosen = mutableListOf<Hct>()
+
+    for (differenceDegrees in maxHueDifference downTo minHueDifference) {
+        chosen.clear()
+        for (candidate in scoredColors) {
+            val isDuplicateHue = chosen.any {
+                MathUtils.differenceDegrees(candidate.hct.hue, it.hue) < differenceDegrees.toDouble()
+            }
+            if (!isDuplicateHue) {
+                chosen.add(candidate.hct)
+            }
+            if (chosen.size >= desiredColorCount) break
+        }
+        if (chosen.size >= desiredColorCount) break
+    }
+
+    if (chosen.isEmpty()) return listOf(fallbackColorArgb)
+    return chosen.map { it.toInt() }
+}
+
+private fun createDynamicScheme(
+    sourceHct: Hct,
+    paletteStyle: AlbumArtPaletteStyle,
+    isDark: Boolean,
+    forceNeutral: Boolean
+): DynamicScheme {
+    if (forceNeutral && paletteStyle != AlbumArtPaletteStyle.MONOCHROME) {
+        return SchemeNeutral(sourceHct, isDark, 0.0)
+    }
+
+    return when (paletteStyle) {
+        AlbumArtPaletteStyle.TONAL_SPOT -> SchemeTonalSpot(sourceHct, isDark, 0.0)
+        AlbumArtPaletteStyle.VIBRANT -> SchemeVibrant(sourceHct, isDark, 0.0)
+        AlbumArtPaletteStyle.EXPRESSIVE -> SchemeExpressive(sourceHct, isDark, 0.0)
+        AlbumArtPaletteStyle.FRUIT_SALAD -> SchemeFruitSalad(sourceHct, isDark, 0.0)
+        AlbumArtPaletteStyle.MONOCHROME -> SchemeMonochrome(sourceHct, isDark, 0.0)
+    }
+}
+
+private fun averageColorArgb(pixels: IntArray): Int {
+    if (pixels.isEmpty()) return DarkColorScheme.primary.toArgb()
+
+    var totalRed = 0L
+    var totalGreen = 0L
+    var totalBlue = 0L
+
+    for (argb in pixels) {
+        totalRed += (argb ushr 16) and 0xFF
+        totalGreen += (argb ushr 8) and 0xFF
+        totalBlue += argb and 0xFF
+    }
+
+    val size = pixels.size.toLong()
+    val r = (totalRed / size).toInt().coerceIn(0, 255)
+    val g = (totalGreen / size).toInt().coerceIn(0, 255)
+    val b = (totalBlue / size).toInt().coerceIn(0, 255)
+    return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+}
+
+private fun isMostlyNeutralArtwork(colorsToPopulation: Map<Int, Int>): Boolean {
+    if (colorsToPopulation.isEmpty()) return false
+
+    var totalPopulation = 0.0
+    var neutralPopulation = 0.0
+    var highChromaPopulation = 0.0
+    var weightedChroma = 0.0
+
+    for ((argb, populationInt) in colorsToPopulation) {
+        if (populationInt <= 0) continue
+        val population = populationInt.toDouble()
+        val chroma = Hct.fromInt(argb).chroma
+
+        totalPopulation += population
+        weightedChroma += chroma * population
+
+        if (chroma <= NEUTRAL_PIXEL_CHROMA_THRESHOLD) {
+            neutralPopulation += population
+        }
+        if (chroma >= HIGH_CHROMA_THRESHOLD) {
+            highChromaPopulation += population
+        }
+    }
+
+    if (totalPopulation <= 0.0) return false
+
+    val neutralRatio = neutralPopulation / totalPopulation
+    val highChromaRatio = highChromaPopulation / totalPopulation
+    val meanChroma = weightedChroma / totalPopulation
+
+    return neutralRatio >= REQUIRED_NEUTRAL_POPULATION &&
+        highChromaRatio <= MAX_HIGH_CHROMA_POPULATION &&
+        meanChroma <= MAX_WEIGHTED_CHROMA_FOR_NEUTRAL
+}
+
+private fun DynamicScheme.toComposeColorScheme(): ColorScheme {
+    return ColorScheme(
+        primary = Color(getPrimary()),
+        onPrimary = Color(getOnPrimary()),
+        primaryContainer = Color(getPrimaryContainer()),
+        onPrimaryContainer = Color(getOnPrimaryContainer()),
+        inversePrimary = Color(getInversePrimary()),
+        secondary = Color(getSecondary()),
+        onSecondary = Color(getOnSecondary()),
+        secondaryContainer = Color(getSecondaryContainer()),
+        onSecondaryContainer = Color(getOnSecondaryContainer()),
+        tertiary = Color(getTertiary()),
+        onTertiary = Color(getOnTertiary()),
+        tertiaryContainer = Color(getTertiaryContainer()),
+        onTertiaryContainer = Color(getOnTertiaryContainer()),
+        background = Color(getBackground()),
+        onBackground = Color(getOnBackground()),
+        surface = Color(getSurface()),
+        onSurface = Color(getOnSurface()),
+        surfaceVariant = Color(getSurfaceVariant()),
+        onSurfaceVariant = Color(getOnSurfaceVariant()),
+        surfaceTint = Color(getSurfaceTint()),
+        inverseSurface = Color(getInverseSurface()),
+        inverseOnSurface = Color(getInverseOnSurface()),
+        error = Color(getError()),
+        onError = Color(getOnError()),
+        errorContainer = Color(getErrorContainer()),
+        onErrorContainer = Color(getOnErrorContainer()),
+        outline = Color(getOutline()),
+        outlineVariant = Color(getOutlineVariant()),
+        scrim = Color(getScrim()),
+        surfaceBright = Color(getSurfaceBright()),
+        surfaceDim = Color(getSurfaceDim()),
+        surfaceContainer = Color(getSurfaceContainer()),
+        surfaceContainerHigh = Color(getSurfaceContainerHigh()),
+        surfaceContainerHighest = Color(getSurfaceContainerHighest()),
+        surfaceContainerLow = Color(getSurfaceContainerLow()),
+        surfaceContainerLowest = Color(getSurfaceContainerLowest()),
+        primaryFixed = Color(getPrimaryFixed()),
+        primaryFixedDim = Color(getPrimaryFixedDim()),
+        onPrimaryFixed = Color(getOnPrimaryFixed()),
+        onPrimaryFixedVariant = Color(getOnPrimaryFixedVariant()),
+        secondaryFixed = Color(getSecondaryFixed()),
+        secondaryFixedDim = Color(getSecondaryFixedDim()),
+        onSecondaryFixed = Color(getOnSecondaryFixed()),
+        onSecondaryFixedVariant = Color(getOnSecondaryFixedVariant()),
+        tertiaryFixed = Color(getTertiaryFixed()),
+        tertiaryFixedDim = Color(getTertiaryFixedDim()),
+        onTertiaryFixed = Color(getOnTertiaryFixed()),
+        onTertiaryFixedVariant = Color(getOnTertiaryFixedVariant())
     )
-    return ColorSchemePair(lightScheme, darkScheme)
 }

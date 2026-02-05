@@ -79,6 +79,7 @@ constructor(
         // val GLOBAL_THEME_PREFERENCE = stringPreferencesKey("global_theme_preference_v2") //
         // Removed
         val PLAYER_THEME_PREFERENCE = stringPreferencesKey("player_theme_preference_v2")
+        val ALBUM_ART_PALETTE_STYLE = stringPreferencesKey("album_art_palette_style_v1")
         val APP_THEME_MODE = stringPreferencesKey("app_theme_mode")
         val FAVORITE_SONG_IDS = stringSetPreferencesKey("favorite_song_ids")
         val USER_PLAYLISTS = stringPreferencesKey("user_playlists_json_v1")
@@ -669,6 +670,13 @@ constructor(
                         ?: ThemePreference.ALBUM_ART // Default to Album Art
             }
 
+    val albumArtPaletteStyleFlow: Flow<AlbumArtPaletteStyle> =
+            dataStore.data.map { preferences ->
+                AlbumArtPaletteStyle.fromStorageKey(
+                    preferences[PreferencesKeys.ALBUM_ART_PALETTE_STYLE]
+                )
+            }
+
     val appThemeModeFlow: Flow<String> =
             dataStore.data.map { preferences ->
                 preferences[PreferencesKeys.APP_THEME_MODE] ?: AppThemeMode.FOLLOW_SYSTEM
@@ -969,6 +977,12 @@ constructor(
     suspend fun setPlayerThemePreference(themeMode: String) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.PLAYER_THEME_PREFERENCE] = themeMode
+        }
+    }
+
+    suspend fun setAlbumArtPaletteStyle(style: AlbumArtPaletteStyle) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ALBUM_ART_PALETTE_STYLE] = style.storageKey
         }
     }
 
