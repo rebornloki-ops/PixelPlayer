@@ -1554,14 +1554,20 @@ fun UnifiedPlayerSheet(
             CompositionLocalProvider(
                 LocalMaterialTheme provides (albumColorScheme ?: MaterialTheme.colorScheme)
             ) {
-                CastBottomSheet(
-                    playerViewModel = playerViewModel,
-                    onDismiss = {
-                        castSheetOpenFraction = 0f
-                        showCastSheet = false
-                    },
-                    onExpansionChanged = { fraction -> castSheetOpenFraction = fraction }
-                )
+                MaterialTheme(
+                    colorScheme = LocalMaterialTheme.current,
+                    typography = MaterialTheme.typography,
+                    shapes = MaterialTheme.shapes
+                ) {
+                    CastBottomSheet(
+                        playerViewModel = playerViewModel,
+                        onDismiss = {
+                            castSheetOpenFraction = 0f
+                            showCastSheet = false
+                        },
+                        onExpansionChanged = { fraction -> castSheetOpenFraction = fraction }
+                    )
+                }
             }
         }
 

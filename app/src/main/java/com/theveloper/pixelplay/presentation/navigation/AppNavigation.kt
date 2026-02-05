@@ -41,6 +41,7 @@ import com.theveloper.pixelplay.presentation.screens.HomeScreen
 import com.theveloper.pixelplay.presentation.screens.LibraryScreen
 import com.theveloper.pixelplay.presentation.screens.MashupScreen
 import com.theveloper.pixelplay.presentation.screens.NavBarCornerRadiusScreen
+import com.theveloper.pixelplay.presentation.screens.PaletteStyleSettingsScreen
 import com.theveloper.pixelplay.presentation.screens.PlaylistDetailScreen
 
 import com.theveloper.pixelplay.presentation.screens.AboutScreen
@@ -228,6 +229,20 @@ fun AppNavigation(
                             onBackClick = { navController.popBackStack() }
                         )
                     }
+                }
+            }
+            composable(
+                Screen.PaletteStyle.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) {
+                ScreenWrapper(navController = navController) {
+                    PaletteStyleSettingsScreen(
+                        playerViewModel = playerViewModel,
+                        onBackClick = { navController.popBackStack() }
+                    )
                 }
             }
             composable(

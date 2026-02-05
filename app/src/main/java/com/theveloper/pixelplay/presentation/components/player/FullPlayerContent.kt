@@ -249,28 +249,34 @@ fun FullPlayerContent(
     }
 
     if (showFetchLyricsDialog) {
-        FetchLyricsDialog(
-            uiState = lyricsSearchUiState,
-            currentSong = song, // Use 'song' which is derived from args/retained
-            onConfirm = { forcePick ->
-                // El usuario confirma, iniciamos la búsqueda
-                playerViewModel.fetchLyricsForCurrentSong(forcePick)
-            },
-            onPickResult = { result ->
-                playerViewModel.acceptLyricsSearchResultForCurrentSong(result)
-            },
-            onManualSearch = { title, artist ->
-                playerViewModel.searchLyricsManually(title, artist)
-            },
-            onDismiss = {
-                // El usuario cancela o cierra el diálogo
-                showFetchLyricsDialog = false
-                playerViewModel.resetLyricsSearchState()
-            },
-            onImport = {
-                filePickerLauncher.launch("*/*")
-            }
-        )
+        MaterialTheme(
+            colorScheme = LocalMaterialTheme.current,
+            typography = MaterialTheme.typography,
+            shapes = MaterialTheme.shapes
+        ) {
+            FetchLyricsDialog(
+                uiState = lyricsSearchUiState,
+                currentSong = song, // Use 'song' which is derived from args/retained
+                onConfirm = { forcePick ->
+                    // El usuario confirma, iniciamos la búsqueda
+                    playerViewModel.fetchLyricsForCurrentSong(forcePick)
+                },
+                onPickResult = { result ->
+                    playerViewModel.acceptLyricsSearchResultForCurrentSong(result)
+                },
+                onManualSearch = { title, artist ->
+                    playerViewModel.searchLyricsManually(title, artist)
+                },
+                onDismiss = {
+                    // El usuario cancela o cierra el diálogo
+                    showFetchLyricsDialog = false
+                    playerViewModel.resetLyricsSearchState()
+                },
+                onImport = {
+                    filePickerLauncher.launch("*/*")
+                }
+            )
+        }
     }
 
     // Observador para reaccionar al resultado de la búsqueda de letras

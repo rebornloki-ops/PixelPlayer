@@ -90,7 +90,6 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.data.preferences.AppThemeMode
-import com.theveloper.pixelplay.data.preferences.AlbumArtPaletteStyle
 import com.theveloper.pixelplay.data.preferences.CarouselStyle
 import com.theveloper.pixelplay.data.preferences.LaunchTab
 import com.theveloper.pixelplay.data.preferences.LibraryNavigationMode
@@ -396,17 +395,12 @@ fun SettingsCategoryScreen(
                                     onSelectionChanged = { settingsViewModel.setPlayerThemePreference(it) },
                                     leadingIcon = { Icon(Icons.Outlined.PlayCircle, null, tint = MaterialTheme.colorScheme.secondary) }
                                 )
-                                ThemeSelectorItem(
-                                    label = "Album Art Palette Style",
-                                    description = "Pick the tonal recipe used to build the album-art theme.",
-                                    options = AlbumArtPaletteStyle.entries.associate { it.storageKey to it.label },
-                                    selectedKey = uiState.albumArtPaletteStyle.storageKey,
-                                    onSelectionChanged = {
-                                        settingsViewModel.setAlbumArtPaletteStyle(
-                                            AlbumArtPaletteStyle.fromStorageKey(it)
-                                        )
-                                    },
-                                    leadingIcon = { Icon(Icons.Outlined.Style, null, tint = MaterialTheme.colorScheme.secondary) }
+                                SettingsItem(
+                                    title = "Album Art Palette Style",
+                                    subtitle = "Current: ${uiState.albumArtPaletteStyle.label}. Open live preview and choose style.",
+                                    leadingIcon = { Icon(Icons.Outlined.Style, null, tint = MaterialTheme.colorScheme.secondary) },
+                                    trailingIcon = { Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                    onClick = { navController.navigate(Screen.PaletteStyle.route) }
                                 )
                                 ThemeSelectorItem(
                                     label = "Carousel Style",

@@ -259,21 +259,27 @@ fun LyricsSheet(
     }
 
     if (showFetchLyricsDialog) {
-        FetchLyricsDialog(
-            uiState = lyricsSearchUiState,
-            currentSong = currentSong,
-            onConfirm = onSearchLyrics,
-            onPickResult = onPickResult,
-            onManualSearch = onManualSearch,
-            onDismiss = {
-                showFetchLyricsDialog = false
-                onDismissLyricsSearch()
-                if (lyrics == null && !isLoadingLyrics) {
-                    onBackClick()
-                }
-            },
-            onImport = onImportLyrics
-        )
+        MaterialTheme(
+            colorScheme = LocalMaterialTheme.current,
+            typography = MaterialTheme.typography,
+            shapes = MaterialTheme.shapes
+        ) {
+            FetchLyricsDialog(
+                uiState = lyricsSearchUiState,
+                currentSong = currentSong,
+                onConfirm = onSearchLyrics,
+                onPickResult = onPickResult,
+                onManualSearch = onManualSearch,
+                onDismiss = {
+                    showFetchLyricsDialog = false
+                    onDismissLyricsSearch()
+                    if (lyrics == null && !isLoadingLyrics) {
+                        onBackClick()
+                    }
+                },
+                onImport = onImportLyrics
+            )
+        }
     }
 
     // Save Lyrics Dialog
