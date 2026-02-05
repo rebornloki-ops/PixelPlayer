@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -85,6 +86,15 @@ fun RowScope.CustomNavigationBarItem(
         label = "textColor"
     )
 
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1.1f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "iconScale"
+    )
+
     // Determinar si mostrar la etiqueta
     val showLabel = label != null && (alwaysShowLabel || selected)
 
@@ -94,7 +104,7 @@ fun RowScope.CustomNavigationBarItem(
             .weight(1f)
             .fillMaxHeight()
             .clickable(
-                onClick = { if (!selected) onClick() else null },
+                onClick = onClick,
                 enabled = enabled,
                 role = Role.Tab,
                 interactionSource = interactionSource,
@@ -148,6 +158,10 @@ fun RowScope.CustomNavigationBarItem(
                 modifier = Modifier
                     .size(48.dp, 24.dp) // Área clicable reducida
                     .clip(RoundedCornerShape(12.dp))
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    }
 
             ) {
                 // Ícono

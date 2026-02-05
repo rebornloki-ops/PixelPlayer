@@ -198,6 +198,7 @@ import androidx.paging.LoadState
 import com.theveloper.pixelplay.presentation.components.ExpressiveScrollBar
 import com.theveloper.pixelplay.presentation.components.LibrarySortBottomSheet
 import com.theveloper.pixelplay.presentation.components.subcomps.EnhancedSongListItem
+import kotlin.math.abs
 
 val ListExtraBottomGap = 30.dp
 val PlayerSheetCollapsedCornerRadius = 32.dp
@@ -226,9 +227,28 @@ fun LibraryScreen(
     var playlistSheetSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
     val selectedSongForInfo by playerViewModel.selectedSongForInfo.collectAsState()
     val tabTitles by playerViewModel.libraryTabsFlow.collectAsState()
-    val pagerState = rememberPagerState(initialPage = lastTabIndex) { tabTitles.size }
     val currentTabId by playerViewModel.currentLibraryTabId.collectAsState()
     val libraryNavigationMode by playerViewModel.libraryNavigationMode.collectAsState()
+    val isCompactNavigation = libraryNavigationMode == LibraryNavigationMode.COMPACT_PILL
+    val tabCount = tabTitles.size.coerceAtLeast(1)
+    val normalizedLastTabIndex = positiveMod(lastTabIndex, tabCount)
+    val compactInitialPage = remember(tabCount, normalizedLastTabIndex) {
+        infinitePagerInitialPage(tabCount, normalizedLastTabIndex)
+    }
+    val pagerState = if (isCompactNavigation) {
+        rememberPagerState(initialPage = compactInitialPage) { Int.MAX_VALUE }
+    } else {
+        rememberPagerState(initialPage = normalizedLastTabIndex) { tabCount }
+    }
+    val currentTabIndex by remember(pagerState, tabTitles, isCompactNavigation) {
+        derivedStateOf {
+            resolveTabIndex(
+                page = pagerState.currentPage,
+                tabCount = tabTitles.size,
+                compactMode = isCompactNavigation
+            )
+        }
+    }
     val isSortSheetVisible by playerViewModel.isSortingSheetVisible.collectAsState()
     val libraryUiState by playerViewModel.playerUiState.collectAsState()
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
@@ -326,20 +346,20 @@ fun LibraryScreen(
     // La lógica de carga diferida (lazy loading) se mantiene.
     LaunchedEffect(Unit) {
         Trace.beginSection("LibraryScreen.InitialTabLoad")
-        playerViewModel.onLibraryTabSelected(lastTabIndex)
+        playerViewModel.onLibraryTabSelected(normalizedLastTabIndex)
         Trace.endSection()
     }
 
-    LaunchedEffect(pagerState.currentPage) {
+    LaunchedEffect(currentTabIndex) {
         Trace.beginSection("LibraryScreen.PageChangeTabLoad")
-        playerViewModel.onLibraryTabSelected(pagerState.currentPage)
+        playerViewModel.onLibraryTabSelected(currentTabIndex)
         Trace.endSection()
         
         // Clear selection when switching tabs
         multiSelectionState.clearSelection()
     }
 
-    val fabState by remember { derivedStateOf { pagerState.currentPage } } // UI sin cambios
+    val fabState by remember { derivedStateOf { currentTabIndex } } // UI sin cambios
     val transition = updateTransition(
         targetState = fabState,
         label = "Action Button Icon Transition"
@@ -378,8 +398,7 @@ fun LibraryScreen(
         Brush.verticalGradient(colors = gradientColors)
     }
 
-    val isCompactNavigation = libraryNavigationMode == LibraryNavigationMode.COMPACT_PILL
-    val currentTab = tabTitles.getOrNull(pagerState.currentPage)?.toLibraryTabIdOrNull() ?: currentTabId
+    val currentTab = tabTitles.getOrNull(currentTabIndex)?.toLibraryTabIdOrNull() ?: currentTabId
     val currentTabTitle = currentTab.displayTitle()
 
     Scaffold(
@@ -466,13 +485,13 @@ fun LibraryScreen(
                 if (!isCompactNavigation) {
                     val showTabIndicator = false
                     ScrollableTabRow(
-                        selectedTabIndex = pagerState.currentPage,
+                        selectedTabIndex = currentTabIndex,
                         containerColor = Color.Transparent,
                         edgePadding = 12.dp,
                         indicator = { tabPositions ->
-                            if (showTabIndicator && pagerState.currentPage < tabPositions.size) {
+                            if (showTabIndicator && currentTabIndex < tabPositions.size) {
                                 TabRowDefaults.PrimaryIndicator(
-                                    modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
+                                    modifier = Modifier.tabIndicatorOffset(tabPositions[currentTabIndex]),
                                     height = 3.dp,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -485,13 +504,24 @@ fun LibraryScreen(
                             TabAnimation(
                                 index = index,
                                 title = tabId.storageKey,
-                                selectedIndex = pagerState.currentPage,
-                                onClick = { scope.launch { pagerState.animateScrollToPage(index) } }
+                                selectedIndex = currentTabIndex,
+                                onClick = {
+                                    scope.launch {
+                                        pagerState.animateScrollToPage(
+                                            targetPageForTabIndex(
+                                                currentPage = pagerState.currentPage,
+                                                targetTabIndex = index,
+                                                tabCount = tabTitles.size,
+                                                compactMode = isCompactNavigation
+                                            )
+                                        )
+                                    }
+                                }
                             ) {
                                 Text(
                                     text = tabId.title,
                                     style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Medium
+                                    fontWeight = if (currentTabIndex == index) FontWeight.Bold else FontWeight.Medium
                                 )
                             }
                         }
@@ -499,7 +529,7 @@ fun LibraryScreen(
 //                        modifier = Modifier.aspectRatio(1f),
                             index = -1, // A non-matching index to keep it unselected
                             title = "Edit",
-                            selectedIndex = pagerState.currentPage,
+                            selectedIndex = currentTabIndex,
                             onClick = { showReorderTabsSheet = true }
                         ) {
                             Icon(
@@ -612,7 +642,7 @@ fun LibraryScreen(
                                 SelectionActionRow(
                                     selectedCount = selectedSongs.size,
                                     onSelectAll = { 
-                                        val songsToSelect = when (tabTitles.getOrNull(pagerState.currentPage)?.toLibraryTabIdOrNull()) {
+                                        val songsToSelect = when (tabTitles.getOrNull(currentTabIndex)?.toLibraryTabIdOrNull()) {
                                             LibraryTabId.LIKED -> playerViewModel.favoriteSongs.value
                                             LibraryTabId.FOLDERS -> {
                                                 // If we are deep in a folder, select songs of that folder.
@@ -635,7 +665,7 @@ fun LibraryScreen(
                                 LibraryActionRow(
                                     modifier = Modifier.fillMaxWidth(),
                                     onMainActionClick = {
-                                        when (tabTitles.getOrNull(pagerState.currentPage)?.toLibraryTabIdOrNull()) {
+                                        when (tabTitles.getOrNull(currentTabIndex)?.toLibraryTabIdOrNull()) {
                                             LibraryTabId.PLAYLISTS -> showCreatePlaylistDialog = true
                                             LibraryTabId.LIKED -> playerViewModel.shuffleFavoriteSongs()
                                             LibraryTabId.ALBUMS -> playerViewModel.shuffleRandomAlbum()
@@ -650,7 +680,7 @@ fun LibraryScreen(
                                     onLocateClick = { locateAction?.invoke() },
                                     isPlaylistTab = currentTabId == LibraryTabId.PLAYLISTS,
                                     isFoldersTab = currentTabId == LibraryTabId.FOLDERS && (!playerUiState.isFoldersPlaylistView || playerUiState.currentFolder != null),
-                                    onGenerateWithAiClick = { /* Unused now */ },
+                                    onGenerateWithAiClick = { playerViewModel.showAiPlaylistSheet() },
                                     onImportM3uClick = { m3uImportLauncher.launch("audio/x-mpegurl") },
                                     currentFolder = playerUiState.currentFolder,
                                     folderRootPath = playerUiState.folderSourceRootPath.ifBlank {
@@ -792,9 +822,14 @@ fun LibraryScreen(
                                     .padding(top = 8.dp),
                                 pageSpacing = 0.dp,
                                 beyondViewportPageCount = 1, // Pre-load adjacent tabs to reduce lag when switching
-                                key = { tabTitles[it] }
+                                key = { it }
                             ) { page ->
-                            when (tabTitles.getOrNull(page)?.toLibraryTabIdOrNull()) {
+                            val tabIndex = resolveTabIndex(
+                                page = page,
+                                tabCount = tabTitles.size,
+                                compactMode = isCompactNavigation
+                            )
+                            when (tabTitles.getOrNull(tabIndex)?.toLibraryTabIdOrNull()) {
                                 LibraryTabId.SONGS -> {
                                     // Use sorted allSongs from LibraryStateHolder
                                     val playerUiState by playerViewModel.playerUiState.collectAsState()
@@ -1231,9 +1266,18 @@ fun LibraryScreen(
     if (showTabSwitcherSheet) {
         LibraryTabSwitcherSheet(
             tabs = tabTitles,
-            currentIndex = pagerState.currentPage,
+            currentIndex = currentTabIndex,
             onTabSelected = { index ->
-                scope.launch { pagerState.animateScrollToPage(index) }
+                scope.launch {
+                    pagerState.animateScrollToPage(
+                        targetPageForTabIndex(
+                            currentPage = pagerState.currentPage,
+                            targetTabIndex = index,
+                            tabCount = tabTitles.size,
+                            compactMode = isCompactNavigation
+                        )
+                    )
+                }
                 showTabSwitcherSheet = false
             },
             onEditClick = {
@@ -1526,6 +1570,43 @@ private fun LibraryTabGridItem(
             )
         }
     }
+}
+
+private fun positiveMod(value: Int, mod: Int): Int {
+    if (mod <= 0) return 0
+    return ((value % mod) + mod) % mod
+}
+
+private fun infinitePagerInitialPage(tabCount: Int, selectedTabIndex: Int): Int {
+    if (tabCount <= 0) return 0
+    val midpoint = Int.MAX_VALUE / 2
+    val aligned = midpoint - positiveMod(midpoint, tabCount)
+    return aligned + positiveMod(selectedTabIndex, tabCount)
+}
+
+private fun resolveTabIndex(page: Int, tabCount: Int, compactMode: Boolean): Int {
+    if (tabCount <= 0) return 0
+    return if (compactMode) positiveMod(page, tabCount) else page.coerceIn(0, tabCount - 1)
+}
+
+private fun targetPageForTabIndex(
+    currentPage: Int,
+    targetTabIndex: Int,
+    tabCount: Int,
+    compactMode: Boolean
+): Int {
+    if (tabCount <= 0) return 0
+    val safeTarget = positiveMod(targetTabIndex, tabCount)
+    if (!compactMode) return safeTarget
+
+    val currentBase = currentPage - positiveMod(currentPage, tabCount)
+    val candidate = currentBase + safeTarget
+    val prevCandidate = candidate - tabCount
+    val nextCandidate = candidate + tabCount
+
+    return listOf(prevCandidate, candidate, nextCandidate)
+        .minByOrNull { abs(it - currentPage) }
+        ?: candidate
 }
 
 private fun LibraryTabId.iconRes(): Int = when (this) {

@@ -1,5 +1,9 @@
 package com.theveloper.pixelplay.presentation.viewmodel
 
+import com.theveloper.pixelplay.R
+import com.theveloper.pixelplay.data.media.AudioMetadataReader
+import com.theveloper.pixelplay.data.media.CoverArtUpdate
+import com.theveloper.pixelplay.data.media.SongMetadataEditor
 import com.theveloper.pixelplay.data.model.Lyrics
 import com.theveloper.pixelplay.data.model.LyricsSourcePreference
 import com.theveloper.pixelplay.data.model.Song
@@ -7,21 +11,22 @@ import com.theveloper.pixelplay.data.preferences.UserPreferencesRepository
 import com.theveloper.pixelplay.data.repository.LyricsSearchResult
 import com.theveloper.pixelplay.data.repository.MusicRepository
 import com.theveloper.pixelplay.data.repository.NoLyricsFoundException
+import com.theveloper.pixelplay.utils.LyricsUtils
+import java.io.File
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
-import javax.inject.Singleton
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Callback interface for lyrics loading results.
@@ -39,7 +44,8 @@ interface LyricsLoadCallback {
 @Singleton
 class LyricsStateHolder @Inject constructor(
     private val musicRepository: MusicRepository,
-    private val userPreferencesRepository: UserPreferencesRepository
+    private val userPreferencesRepository: UserPreferencesRepository,
+    private val songMetadataEditor: SongMetadataEditor
 ) {
     private var scope: CoroutineScope? = null
     private var loadingJob: Job? = null
@@ -53,19 +59,25 @@ class LyricsStateHolder @Inject constructor(
     private val _searchUiState = MutableStateFlow<LyricsSearchUiState>(LyricsSearchUiState.Idle)
     val searchUiState: StateFlow<LyricsSearchUiState> = _searchUiState.asStateFlow()
 
+    // Event to notify ViewModel of song updates (e.g. lyrics added)
+    private val _songUpdates = kotlinx.coroutines.flow.MutableSharedFlow<Pair<Song, Lyrics?>>()
+    val songUpdates = _songUpdates.asSharedFlow()
 
+    // Event for Toasts
+    private val _messageEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>()
+    val messageEvents = _messageEvents.asSharedFlow()
 
     /**
      * Initialize with coroutine scope and callback from ViewModel.
      */
     fun initialize(
-        coroutineScope: CoroutineScope, 
+        coroutineScope: CoroutineScope,
         callback: LyricsLoadCallback,
         stablePlayerState: StateFlow<com.theveloper.pixelplay.presentation.viewmodel.StablePlayerState>
     ) {
         scope = coroutineScope
         loadCallback = callback
-        
+
         coroutineScope.launch {
             stablePlayerState
                 .map { it.currentSong?.id }
@@ -99,7 +111,7 @@ class LyricsStateHolder @Inject constructor(
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
-            } catch (error: Exception) {
+            } catch (_: Exception) {
                 null
             }
 
@@ -146,31 +158,37 @@ class LyricsStateHolder @Inject constructor(
         _searchUiState.value = LyricsSearchUiState.Idle
     }
 
-    // Event to notify ViewModel of song updates (e.g. lyrics added)
-    private val _songUpdates = kotlinx.coroutines.flow.MutableSharedFlow<Pair<Song, Lyrics?>>()
-    val songUpdates = _songUpdates.asSharedFlow()
-
-    // Event for Toasts
-    private val _messageEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>()
-    val messageEvents = _messageEvents.asSharedFlow()
-
     /**
      * Fetch lyrics for the given song from the remote service.
      */
     fun fetchLyricsForSong(
         song: Song,
         forcePickResults: Boolean,
-        contextHelper: (Int) -> String // temporary helper for strings? Or we pass string.
-        // Actually, let's keep it simple and pass strings or standard errors.
-        // We will return error messages via the state or flow.
+        contextHelper: (Int) -> String
     ) {
-        // We need a way to get strings. For now, we'll hardcode or pass generic errors, 
-        // or rely on the ViewModel to provide the context-dependent strings if needed.
-        // But better: use standard exceptions or error states.
-        
         loadingJob?.cancel()
         loadingJob = scope?.launch {
             _searchUiState.value = LyricsSearchUiState.Loading
+
+            // Embedded lyrics must be prioritized for manual fetch too.
+            val embeddedRaw = withContext(Dispatchers.IO) { readEmbeddedLyricsFromFile(song) }
+            if (!embeddedRaw.isNullOrBlank()) {
+                val embeddedParsed = LyricsUtils.parseLyrics(embeddedRaw)
+                if (hasValidLyrics(embeddedParsed)) {
+                    val parsed = embeddedParsed.copy(areFromRemote = false)
+                    _searchUiState.value = LyricsSearchUiState.Success(parsed)
+
+                    val songId = song.id.toLongOrNull()
+                    if (songId != null) {
+                        musicRepository.updateLyrics(songId, embeddedRaw)
+                    }
+
+                    _songUpdates.emit(song.copy(lyrics = embeddedRaw) to parsed)
+                    _messageEvents.emit(contextHelper(R.string.lyrics_embedded_already_available))
+                    return@launch
+                }
+            }
+
             if (forcePickResults) {
                 musicRepository.searchRemoteLyrics(song)
                     .onSuccess { (query, results) ->
@@ -184,12 +202,13 @@ class LyricsStateHolder @Inject constructor(
                     .onSuccess { (lyrics, rawLyrics) ->
                         _searchUiState.value = LyricsSearchUiState.Success(lyrics)
                         val updatedSong = song.copy(lyrics = rawLyrics)
+                        persistLyricsToFileMetadataIfPossible(updatedSong, rawLyrics)
                         _songUpdates.emit(updatedSong to lyrics)
                     }
                     .onFailure { error ->
                         if (error is NoLyricsFoundException) {
                             // Fallback to search
-                             musicRepository.searchRemoteLyrics(song)
+                            musicRepository.searchRemoteLyrics(song)
                                 .onSuccess { (query, results) ->
                                     _searchUiState.value = LyricsSearchUiState.PickResult(query, results)
                                 }
@@ -225,11 +244,16 @@ class LyricsStateHolder @Inject constructor(
         scope?.launch {
             _searchUiState.value = LyricsSearchUiState.Success(result.lyrics)
             val updatedSong = currentSong.copy(lyrics = result.rawLyrics)
-            
-            // 1. Update DB
-            musicRepository.updateLyrics(currentSong.id.toLong(), result.rawLyrics)
-            
-            // 2. Notify
+
+            // 1. Update DB cache
+            currentSong.id.toLongOrNull()?.let { songId ->
+                musicRepository.updateLyrics(songId, result.rawLyrics)
+            }
+
+            // 2. Attempt metadata write-back to the audio file
+            persistLyricsToFileMetadataIfPossible(updatedSong, result.rawLyrics)
+
+            // 3. Notify
             _songUpdates.emit(updatedSong to result.lyrics)
         }
     }
@@ -240,48 +264,26 @@ class LyricsStateHolder @Inject constructor(
     fun importLyricsFromFile(songId: Long, lyricsContent: String, currentSong: Song?) {
         scope?.launch {
             musicRepository.updateLyrics(songId, lyricsContent)
-            if (currentSong != null && currentSong.id.toLong() == songId) {
+
+            if (currentSong != null && currentSong.id.toLongOrNull() == songId) {
+                val parsedLyrics = LyricsUtils.parseLyrics(lyricsContent)
                 val updatedSong = currentSong.copy(lyrics = lyricsContent)
-                
-                // We need to parse it here. 
-                // Since LyricsUtils is likely a util, we assume we can't access it easily if it's not injected? 
-                // Actually Utils are usually objects. Accessing com.theveloper.pixelplay.utils.LyricsUtils
-                
-                // Logic was:
-                // val parsedLyrics = LyricsUtils.parseLyrics(lyricsContent)
-                // But we don't have access to LyricsUtils here easily without import. 
-                // Let's assume we can map it or just pass null/empty for parsed if we want to rely on the VM to re-parse?
-                // No, we should emit it.
-                
-                // *For now*, to avoid imports issues, we will skip the parsing in the event 
-                // and let the VM parse OR add the import. 
-                // Let's Try to add the import in a follow up or just emit "null" for parsed lyrics 
-                // and let the VM re-parse/reload?
-                // Better: Emit the raw lyrics. The event is (Song, Lyrics?). 
-                // If we pass null, the VM might keep old lyrics? 
-                
-                // Let's just emit (UpdatedSong, null) and let VM re-load or handle it.
-                // Or better, let's just trigger a reload.
-                
-                _messageEvents.emit("Lyrics imported successfully!")
-                // Tricky part: parsing.
-                // Let's allow passing parsed lyrics or handle it in VM for now.
-                // Wait, I can add the import for LyricsUtils if I know where it is.
-                // It was in `com.theveloper.pixelplay.utils.LyricsUtils`.
-            } else {
-                _searchUiState.value = LyricsSearchUiState.Error("Could not associate lyrics with the current song.")
+                persistLyricsToFileMetadataIfPossible(updatedSong, lyricsContent)
+                _songUpdates.emit(updatedSong to parsedLyrics.takeIf(::hasValidLyrics))
             }
+
+            _messageEvents.emit("Lyrics imported successfully!")
         }
     }
-    
+
     fun resetLyrics(songId: Long) {
         resetSearchState()
         scope?.launch {
-             musicRepository.resetLyrics(songId)
-             _songUpdates.emit(Song.emptySong().copy(id=songId.toString()) to null) 
+            musicRepository.resetLyrics(songId)
+            _songUpdates.emit(Song.emptySong().copy(id = songId.toString()) to null)
         }
     }
-    
+
     fun resetAllLyrics() {
         resetSearchState()
         scope?.launch {
@@ -291,9 +293,55 @@ class LyricsStateHolder @Inject constructor(
 
     private fun handleError(error: Throwable) {
         _searchUiState.value = if (error is NoLyricsFoundException) {
-            LyricsSearchUiState.NotFound("Lyrics not found") // Hardcoded string for now
+            LyricsSearchUiState.NotFound("Lyrics not found")
         } else {
             LyricsSearchUiState.Error(error.message ?: "Unknown error")
+        }
+    }
+
+    private fun hasValidLyrics(lyrics: Lyrics?): Boolean {
+        if (lyrics == null) return false
+        return !lyrics.synced.isNullOrEmpty() || !lyrics.plain.isNullOrEmpty()
+    }
+
+    private fun readEmbeddedLyricsFromFile(song: Song): String? {
+        return runCatching {
+            AudioMetadataReader.read(File(song.path))
+                ?.lyrics
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
+    private suspend fun persistLyricsToFileMetadataIfPossible(song: Song, rawLyrics: String) {
+        val songId = song.id.toLongOrNull() ?: return
+        val normalizedLyrics = rawLyrics.trim()
+        if (normalizedLyrics.isBlank()) return
+
+        withContext(Dispatchers.IO) {
+            val existingArtwork = runCatching {
+                AudioMetadataReader.read(File(song.path))?.artwork
+            }.getOrNull()
+
+            val coverArtUpdate = existingArtwork?.let { artwork ->
+                CoverArtUpdate(
+                    bytes = artwork.bytes,
+                    mimeType = artwork.mimeType ?: "image/jpeg"
+                )
+            }
+
+            runCatching {
+                songMetadataEditor.editSongMetadata(
+                    songId = songId,
+                    newTitle = song.title,
+                    newArtist = song.artist,
+                    newAlbum = song.album,
+                    newGenre = song.genre ?: "",
+                    newLyrics = normalizedLyrics,
+                    newTrackNumber = song.trackNumber,
+                    coverArtUpdate = coverArtUpdate
+                )
+            }
         }
     }
 

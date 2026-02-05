@@ -199,28 +199,28 @@ fun LibraryActionRow(
                             )
                         )
                     ) {
-                        if (showGenerateButton) {
-                            // Replaced "Generate" with "Import M3U" maintaining layout and animation
-                            Row(modifier = Modifier.height(genHeight), verticalAlignment = Alignment.CenterVertically) {
-                                Spacer(modifier = Modifier.width(8.dp))
+                        Row(modifier = Modifier.height(genHeight), verticalAlignment = Alignment.CenterVertically) {
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            if (showGenerateButton) {
                                 FilledTonalButton(
-                                    onClick = onImportM3uClick,
+                                    onClick = onGenerateWithAiClick,
                                     shape = RoundedCornerShape(
                                         topStart = generateButtonStartCorner,
                                         bottomStart = generateButtonStartCorner,
-                                        topEnd = 26.dp,
-                                        bottomEnd = 26.dp
+                                        topEnd = 8.dp,
+                                        bottomEnd = 8.dp
                                     ),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                                     ),
                                     elevation = ButtonDefaults.buttonElevation(
                                         defaultElevation = 4.dp,
                                         pressedElevation = 6.dp
                                     ),
                                     contentPadding = PaddingValues(
-                                        horizontal = 16.dp,
+                                        horizontal = 14.dp,
                                         vertical = 10.dp
                                     ),
                                     modifier = Modifier.height(genHeight)
@@ -230,17 +230,58 @@ fun LibraryActionRow(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Icon(
-                                            painter = painterResource(R.drawable.rounded_upload_file_24),
-                                            contentDescription = "Import M3U",
+                                            painter = painterResource(R.drawable.generate_playlist_ai),
+                                            contentDescription = "Generate with AI",
                                             modifier = Modifier.size(20.dp)
                                         )
                                         Text(
-                                            text = "Import",
+                                            text = "AI",
                                             overflow = TextOverflow.Ellipsis,
                                             style = MaterialTheme.typography.labelLarge,
                                             fontWeight = FontWeight.Medium
                                         )
                                     }
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+
+                            FilledTonalButton(
+                                onClick = onImportM3uClick,
+                                shape = RoundedCornerShape(
+                                    topStart = if (showGenerateButton) 8.dp else generateButtonStartCorner,
+                                    bottomStart = if (showGenerateButton) 8.dp else generateButtonStartCorner,
+                                    topEnd = 26.dp,
+                                    bottomEnd = 26.dp
+                                ),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ),
+                                elevation = ButtonDefaults.buttonElevation(
+                                    defaultElevation = 4.dp,
+                                    pressedElevation = 6.dp
+                                ),
+                                contentPadding = PaddingValues(
+                                    horizontal = 14.dp,
+                                    vertical = 10.dp
+                                ),
+                                modifier = Modifier.height(genHeight)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.rounded_upload_file_24),
+                                        contentDescription = "Import M3U",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = "Import",
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Medium
+                                    )
                                 }
                             }
                         }

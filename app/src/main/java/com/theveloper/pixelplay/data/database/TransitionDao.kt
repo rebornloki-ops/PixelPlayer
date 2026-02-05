@@ -17,6 +17,9 @@ interface TransitionDao {
     @Upsert
     suspend fun setRule(rule: TransitionRuleEntity)
 
+    @Upsert
+    suspend fun setRules(rules: List<TransitionRuleEntity>)
+
     /**
      * Gets the default transition rule for a given playlist.
      * A default rule is one where fromTrackId and toTrackId are both null.
@@ -48,4 +51,10 @@ interface TransitionDao {
      */
     @Query("DELETE FROM transition_rules WHERE playlistId = :playlistId AND fromTrackId IS NULL AND toTrackId IS NULL")
     suspend fun deletePlaylistDefaultRule(playlistId: String)
+
+    @Query("SELECT * FROM transition_rules")
+    suspend fun getAllRulesOnce(): List<TransitionRuleEntity>
+
+    @Query("DELETE FROM transition_rules")
+    suspend fun clearAllRules()
 }

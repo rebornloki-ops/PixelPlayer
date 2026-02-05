@@ -130,6 +130,12 @@ fun SearchScreen(
     var showSongInfoBottomSheet by remember { mutableStateOf(false) }
     var selectedSongForInfo by remember { mutableStateOf<Song?>(null) }
 
+    LaunchedEffect(Unit) {
+        playerViewModel.searchNavDoubleTapEvents.collect {
+            active = true
+        }
+    }
+
     // Perform search whenever searchQuery, active state, or filter changes
     LaunchedEffect(searchQuery, active, currentFilter) {
         if (searchQuery.isNotBlank()) {

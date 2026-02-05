@@ -14,6 +14,7 @@ data class AudioMetadata(
     val albumArtist: String?,
     val album: String?,
     val genre: String?,
+    val lyrics: String?,
     val durationMs: Long?,
     val trackNumber: Int?,
     val year: Int?,
@@ -66,6 +67,8 @@ object AudioMetadataReader {
                     ?: propertyMap["BAND"]?.firstOrNull()?.takeIf { it.isNotBlank() }
                 val album = propertyMap["ALBUM"]?.firstOrNull()?.takeIf { it.isNotBlank() }
                 val genre = propertyMap["GENRE"]?.firstOrNull()?.takeIf { it.isNotBlank() }
+                val lyrics = propertyMap["LYRICS"]?.firstOrNull()?.takeIf { it.isNotBlank() }
+                    ?: propertyMap["UNSYNCEDLYRICS"]?.firstOrNull()?.takeIf { it.isNotBlank() }
                 val trackString = propertyMap["TRACKNUMBER"]?.firstOrNull()?.takeIf { it.isNotBlank() }
                     ?: propertyMap["TRACK"]?.firstOrNull()?.takeIf { it.isNotBlank() }
                 val trackNumber = trackString?.substringBefore('/')?.toIntOrNull()
@@ -89,6 +92,7 @@ object AudioMetadataReader {
                     albumArtist = albumArtist,
                     album = album,
                     genre = genre,
+                    lyrics = lyrics,
                     durationMs = durationMs,
                     trackNumber = trackNumber,
                     year = year,

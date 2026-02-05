@@ -10,6 +10,9 @@ interface LyricsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(lyrics: LyricsEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(lyrics: List<LyricsEntity>)
+
     @Query("SELECT * FROM lyrics WHERE songId = :songId")
     suspend fun getLyrics(songId: Long): LyricsEntity?
 
@@ -18,4 +21,7 @@ interface LyricsDao {
 
     @Query("DELETE FROM lyrics")
     suspend fun deleteAll()
+
+    @Query("SELECT * FROM lyrics")
+    suspend fun getAll(): List<LyricsEntity>
 }

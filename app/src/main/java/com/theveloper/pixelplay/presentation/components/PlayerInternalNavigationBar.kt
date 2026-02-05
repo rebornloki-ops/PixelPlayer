@@ -1,5 +1,6 @@
 package com.theveloper.pixelplay.presentation.components
 
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -32,6 +33,7 @@ import androidx.navigation.NavHostController
 import com.theveloper.pixelplay.BottomNavItem
 import com.theveloper.pixelplay.data.preferences.NavBarStyle
 import com.theveloper.pixelplay.presentation.components.scoped.CustomNavigationBarItem
+import com.theveloper.pixelplay.presentation.navigation.Screen
 import kotlinx.collections.immutable.ImmutableList
 
 internal val NavBarContentHeight = 90.dp // Altura del contenido de la barra de navegación
@@ -43,7 +45,8 @@ private fun PlayerInternalNavigationItemsRow(
     navItems: ImmutableList<BottomNavItem>,
     currentRoute: String?,
     modifier: Modifier = Modifier,
-    navBarStyle: String
+    navBarStyle: String,
+    onSearchIconDoubleTap: () -> Unit
 ) {
     val navBarInsetPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -61,6 +64,7 @@ private fun PlayerInternalNavigationItemsRow(
         horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        var lastSearchTapTimestamp by remember { mutableStateOf(0L) }
         navItems.forEach { item ->
             val isSelected = currentRoute == item.screen.route
             val selectedColor = MaterialTheme.colorScheme.primary
@@ -91,8 +95,19 @@ private fun PlayerInternalNavigationItemsRow(
             val labelLambda: @Composable () -> Unit = remember(item.label) {
                 { Text(item.label) }
             }
-            val onClickLambda = remember(navController, item.screen.route) {
-                {
+            val onClickLambda: () -> Unit = {
+                val isSearchTab = item.screen.route == Screen.Search.route
+                val isAlreadySelected = currentRoute == item.screen.route
+
+                if (isSearchTab && isAlreadySelected) {
+                    val now = SystemClock.elapsedRealtime()
+                    if (now - lastSearchTapTimestamp <= 350L) {
+                        onSearchIconDoubleTap()
+                        lastSearchTapTimestamp = 0L
+                    } else {
+                        lastSearchTapTimestamp = now
+                    }
+                } else if (!isAlreadySelected) {
                     navController.navigate(item.screen.route) {
                         popUpTo(navController.graph.id) { inclusive = true; saveState = false }
                         launchSingleTop = true
@@ -125,13 +140,15 @@ fun PlayerInternalNavigationBar(
     navItems: ImmutableList<BottomNavItem>,
     currentRoute: String?,
     modifier: Modifier = Modifier,
-    navBarStyle: String
+    navBarStyle: String,
+    onSearchIconDoubleTap: () -> Unit = {}
 ) {
     PlayerInternalNavigationItemsRow(
         navController = navController,
         navItems = navItems,
         currentRoute = currentRoute,
         navBarStyle = navBarStyle,
+        onSearchIconDoubleTap = onSearchIconDoubleTap,
         modifier = modifier
     )
 }

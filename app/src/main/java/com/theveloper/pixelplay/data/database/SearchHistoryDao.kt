@@ -10,6 +10,9 @@ interface SearchHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: SearchHistoryEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<SearchHistoryEntity>)
+
     @Query("SELECT * FROM search_history ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentSearches(limit: Int): List<SearchHistoryEntity>
 
@@ -18,4 +21,7 @@ interface SearchHistoryDao {
 
     @Query("DELETE FROM search_history")
     suspend fun clearAll()
+
+    @Query("SELECT * FROM search_history ORDER BY timestamp DESC")
+    suspend fun getAll(): List<SearchHistoryEntity>
 }

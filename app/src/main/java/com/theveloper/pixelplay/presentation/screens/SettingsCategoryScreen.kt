@@ -5,9 +5,12 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +45,7 @@ import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -76,8 +80,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import com.theveloper.pixelplay.R
+import com.theveloper.pixelplay.data.backup.BackupSection
 import com.theveloper.pixelplay.data.preferences.AppThemeMode
 import com.theveloper.pixelplay.data.preferences.CarouselStyle
 import com.theveloper.pixelplay.data.preferences.LaunchTab
@@ -132,6 +138,32 @@ fun SettingsCategoryScreen(
     var showRebuildDatabaseWarning by remember { mutableStateOf(false) }
     var showRegenerateDailyMixDialog by remember { mutableStateOf(false) }
     var showRegenerateStatsDialog by remember { mutableStateOf(false) }
+    var showExportDataDialog by remember { mutableStateOf(false) }
+    var showImportDataDialog by remember { mutableStateOf(false) }
+    var exportSections by remember { mutableStateOf(BackupSection.defaultSelection) }
+    var importSections by remember { mutableStateOf(BackupSection.defaultSelection) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            settingsViewModel.exportAppData(uri, exportSections)
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            settingsViewModel.importAppData(uri, importSections)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        settingsViewModel.dataTransferEvents.collectLatest { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Fetch models on page load when API key exists and models are not already loaded
     LaunchedEffect(category, geminiApiKey) {
@@ -544,6 +576,13 @@ fun SettingsCategoryScreen(
                                     onCheckedChange = { settingsViewModel.setTapBackgroundClosesPlayer(it) },
                                     leadingIcon = { Icon(painterResource(R.drawable.rounded_touch_app_24), null, tint = MaterialTheme.colorScheme.secondary) }
                                 )
+                                SwitchSettingItem(
+                                    title = "Haptic feedback",
+                                    subtitle = "Enable vibration feedback across the app.",
+                                    checked = uiState.hapticsEnabled,
+                                    onCheckedChange = { settingsViewModel.setHapticsEnabled(it) },
+                                    leadingIcon = { Icon(painterResource(R.drawable.rounded_touch_app_24), null, tint = MaterialTheme.colorScheme.secondary) }
+                                )
                             }
                         }
                         SettingsCategory.BEHAVIOR -> {
@@ -673,6 +712,16 @@ fun SettingsCategoryScreen(
                                     icon = { Icon(painterResource(R.drawable.rounded_monitoring_24), null, tint = MaterialTheme.colorScheme.secondary) },
                                     primaryActionLabel = "Regenerate Stats",
                                     onPrimaryAction = { showRegenerateStatsDialog = true }
+                                )
+                                ActionSettingsItem(
+                                    title = "Backup and Restore",
+                                    subtitle = "Export or import selected app data sections.",
+                                    icon = { Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.secondary) },
+                                    primaryActionLabel = "Export Data",
+                                    onPrimaryAction = { showExportDataDialog = true },
+                                    secondaryActionLabel = "Import Data",
+                                    onSecondaryAction = { showImportDataDialog = true },
+                                    enabled = !uiState.isDataTransferInProgress
                                 )
                             }
 
@@ -843,6 +892,136 @@ fun SettingsCategoryScreen(
                 }
             },
             dismissButton = { TextButton(onClick = { showRegenerateStatsDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showExportDataDialog) {
+        val sectionLabels = remember {
+            mapOf(
+                BackupSection.PREFERENCES to "Preferences and playlists",
+                BackupSection.FAVORITES to "Favorites",
+                BackupSection.LYRICS to "Lyrics",
+                BackupSection.SEARCH_HISTORY to "Search history",
+                BackupSection.TRANSITIONS to "Transition rules"
+            )
+        }
+        AlertDialog(
+            title = { Text("Export Data") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    BackupSection.entries.forEach { section ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .pointerInput(section, exportSections) {
+                                    detectTapGestures {
+                                        exportSections = if (section in exportSections) {
+                                            exportSections - section
+                                        } else {
+                                            exportSections + section
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = section in exportSections,
+                                onCheckedChange = { checked ->
+                                    exportSections = if (checked) exportSections + section else exportSections - section
+                                }
+                            )
+                            Text(sectionLabels[section] ?: section.key)
+                        }
+                    }
+                }
+            },
+            onDismissRequest = { showExportDataDialog = false },
+            confirmButton = {
+                TextButton(
+                    enabled = exportSections.isNotEmpty() && !uiState.isDataTransferInProgress,
+                    onClick = {
+                        showExportDataDialog = false
+                        val fileName = "PixelPlayer_Backup_${System.currentTimeMillis()}.json"
+                        exportLauncher.launch(fileName)
+                    }
+                ) {
+                    Text("Export")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportDataDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showImportDataDialog) {
+        val sectionLabels = remember {
+            mapOf(
+                BackupSection.PREFERENCES to "Preferences and playlists",
+                BackupSection.FAVORITES to "Favorites",
+                BackupSection.LYRICS to "Lyrics",
+                BackupSection.SEARCH_HISTORY to "Search history",
+                BackupSection.TRANSITIONS to "Transition rules"
+            )
+        }
+        AlertDialog(
+            title = { Text("Import Data") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Selected sections will replace current data.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    BackupSection.entries.forEach { section ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .pointerInput(section, importSections) {
+                                    detectTapGestures {
+                                        importSections = if (section in importSections) {
+                                            importSections - section
+                                        } else {
+                                            importSections + section
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = section in importSections,
+                                onCheckedChange = { checked ->
+                                    importSections = if (checked) importSections + section else importSections - section
+                                }
+                            )
+                            Text(sectionLabels[section] ?: section.key)
+                        }
+                    }
+                }
+            },
+            onDismissRequest = { showImportDataDialog = false },
+            confirmButton = {
+                TextButton(
+                    enabled = importSections.isNotEmpty() && !uiState.isDataTransferInProgress,
+                    onClick = {
+                        showImportDataDialog = false
+                        importLauncher.launch("application/json")
+                    }
+                ) {
+                    Text("Import")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDataDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }

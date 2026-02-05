@@ -246,6 +246,13 @@ class PlayerViewModel @Inject constructor(
             initialValue = true
         )
 
+    val hapticsEnabled: StateFlow<Boolean> = userPreferencesRepository.hapticsEnabledFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = true
+        )
+
     // Lyrics sync offset - now managed by LyricsStateHolder
     val currentSongLyricsSyncOffset: StateFlow<Int> = lyricsStateHolder.currentSongSyncOffset
 
@@ -310,6 +317,8 @@ class PlayerViewModel @Inject constructor(
 
     private val _artistNavigationRequests = MutableSharedFlow<Long>(extraBufferCapacity = 1)
     val artistNavigationRequests = _artistNavigationRequests.asSharedFlow()
+    private val _searchNavDoubleTapEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val searchNavDoubleTapEvents = _searchNavDoubleTapEvents.asSharedFlow()
     private var artistNavigationJob: Job? = null
 
     val castRoutes: StateFlow<List<MediaRouter.RouteInfo>> = castStateHolder.castRoutes
@@ -404,6 +413,10 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             _toastEvents.emit(message)
         }
+    }
+
+    fun onSearchNavIconDoubleTapped() {
+        _searchNavDoubleTapEvents.tryEmit(Unit)
     }
 
 

@@ -176,6 +176,7 @@ constructor(
         // Developer Options
         val ALBUM_ART_QUALITY = stringPreferencesKey("album_art_quality")
         val TAP_BACKGROUND_CLOSES_PLAYER = booleanPreferencesKey("tap_background_closes_player")
+        val HAPTICS_ENABLED = booleanPreferencesKey("haptics_enabled")
         val IMMERSIVE_LYRICS_ENABLED = booleanPreferencesKey("immersive_lyrics_enabled")
         val IMMERSIVE_LYRICS_TIMEOUT = longPreferencesKey("immersive_lyrics_timeout")
         
@@ -1607,6 +1608,109 @@ constructor(
     suspend fun setTapBackgroundClosesPlayer(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.TAP_BACKGROUND_CLOSES_PLAYER] = enabled
+        }
+    }
+
+    val hapticsEnabledFlow: Flow<Boolean> =
+        dataStore.data.map { preferences ->
+            preferences[PreferencesKeys.HAPTICS_ENABLED] ?: true
+        }
+
+    suspend fun setHapticsEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.HAPTICS_ENABLED] = enabled
+        }
+    }
+
+    suspend fun exportPreferencesForBackup(): List<PreferenceBackupEntry> {
+        val snapshot = dataStore.data.first().asMap()
+        return snapshot.mapNotNull { (key, value) ->
+            val keyName = key.name
+            when (value) {
+                is String -> PreferenceBackupEntry(
+                    key = keyName,
+                    type = "string",
+                    stringValue = value
+                )
+                is Int -> PreferenceBackupEntry(
+                    key = keyName,
+                    type = "int",
+                    intValue = value
+                )
+                is Long -> PreferenceBackupEntry(
+                    key = keyName,
+                    type = "long",
+                    longValue = value
+                )
+                is Boolean -> PreferenceBackupEntry(
+                    key = keyName,
+                    type = "boolean",
+                    booleanValue = value
+                )
+                is Float -> PreferenceBackupEntry(
+                    key = keyName,
+                    type = "float",
+                    floatValue = value
+                )
+                is Double -> PreferenceBackupEntry(
+                    key = keyName,
+                    type = "double",
+                    doubleValue = value
+                )
+                is Set<*> -> {
+                    val stringSet = value.filterIsInstance<String>().toSet()
+                    PreferenceBackupEntry(
+                        key = keyName,
+                        type = "string_set",
+                        stringSetValue = stringSet
+                    )
+                }
+                else -> null
+            }
+        }
+    }
+
+    suspend fun importPreferencesFromBackup(
+        entries: List<PreferenceBackupEntry>,
+        clearExisting: Boolean = true
+    ) {
+        dataStore.edit { preferences ->
+            if (clearExisting) {
+                preferences.clear()
+            }
+
+            entries.forEach { entry ->
+                when (entry.type) {
+                    "string" -> {
+                        val value = entry.stringValue ?: return@forEach
+                        preferences[stringPreferencesKey(entry.key)] = value
+                    }
+                    "int" -> {
+                        val value = entry.intValue ?: return@forEach
+                        preferences[intPreferencesKey(entry.key)] = value
+                    }
+                    "long" -> {
+                        val value = entry.longValue ?: return@forEach
+                        preferences[longPreferencesKey(entry.key)] = value
+                    }
+                    "boolean" -> {
+                        val value = entry.booleanValue ?: return@forEach
+                        preferences[booleanPreferencesKey(entry.key)] = value
+                    }
+                    "float" -> {
+                        val value = entry.floatValue ?: return@forEach
+                        preferences[androidx.datastore.preferences.core.floatPreferencesKey(entry.key)] = value
+                    }
+                    "double" -> {
+                        val value = entry.doubleValue ?: return@forEach
+                        preferences[androidx.datastore.preferences.core.doublePreferencesKey(entry.key)] = value
+                    }
+                    "string_set" -> {
+                        val value = entry.stringSetValue ?: return@forEach
+                        preferences[stringSetPreferencesKey(entry.key)] = value
+                    }
+                }
+            }
         }
     }
 }

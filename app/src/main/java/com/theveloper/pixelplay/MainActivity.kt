@@ -39,9 +39,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import android.os.Trace // Import Trace
 import androidx.compose.ui.unit.Dp
-// import androidx.compose.ui.platform.LocalView // No longer needed for this
 // import androidx.core.view.WindowInsetsCompat // No longer needed for this
 import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -505,8 +505,15 @@ class MainActivity : ComponentActivity() {
         }
 
         val navBarStyle by playerViewModel.navBarStyle.collectAsState()
+        val hapticsEnabled by playerViewModel.hapticsEnabled.collectAsState()
+        val rootView = LocalView.current
 
         val systemNavBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+        LaunchedEffect(hapticsEnabled, rootView) {
+            rootView.isHapticFeedbackEnabled = hapticsEnabled
+            rootView.rootView?.isHapticFeedbackEnabled = hapticsEnabled
+        }
 
         val horizontalPadding = if (navBarStyle == NavBarStyle.DEFAULT) {
             if (systemNavBarInset > 30.dp) 14.dp else systemNavBarInset
@@ -640,6 +647,7 @@ class MainActivity : ComponentActivity() {
                                 navItems = commonNavItems,
                                 currentRoute = currentRoute,
                                 navBarStyle = navBarStyle,
+                                onSearchIconDoubleTap = { playerViewModel.onSearchNavIconDoubleTapped() },
                                 modifier = Modifier.fillMaxSize()
                             )
                         }

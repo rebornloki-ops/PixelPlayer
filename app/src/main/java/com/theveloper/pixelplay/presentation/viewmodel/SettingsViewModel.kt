@@ -1,8 +1,11 @@
 package com.theveloper.pixelplay.presentation.viewmodel
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.theveloper.pixelplay.data.backup.AppDataBackupManager
+import com.theveloper.pixelplay.data.backup.BackupSection
 import com.theveloper.pixelplay.data.preferences.AppThemeMode
 import com.theveloper.pixelplay.data.preferences.CarouselStyle
 import com.theveloper.pixelplay.data.preferences.LibraryNavigationMode
@@ -57,8 +60,10 @@ data class SettingsUiState(
     // Developer Options
     val albumArtQuality: AlbumArtQuality = AlbumArtQuality.MEDIUM,
     val tapBackgroundClosesPlayer: Boolean = true,
+    val hapticsEnabled: Boolean = true,
     val immersiveLyricsEnabled: Boolean = false,
-    val immersiveLyricsTimeout: Long = 4000L
+    val immersiveLyricsTimeout: Long = 4000L,
+    val isDataTransferInProgress: Boolean = false
 )
 
 data class FailedSongInfo(
@@ -106,6 +111,7 @@ private sealed interface SettingsUiUpdate {
         val lyricsSourcePreference: LyricsSourcePreference,
         val autoScanLrcFiles: Boolean,
         val blockedDirectories: Set<String>,
+        val hapticsEnabled: Boolean,
         val immersiveLyricsEnabled: Boolean,
         val immersiveLyricsTimeout: Long
     ) : SettingsUiUpdate
@@ -118,6 +124,7 @@ class SettingsViewModel @Inject constructor(
     private val geminiModelService: GeminiModelService,
     private val lyricsRepository: LyricsRepository,
     private val musicRepository: MusicRepository,
+    private val appDataBackupManager: AppDataBackupManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -157,6 +164,9 @@ class SettingsViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = SyncProgress()
         )
+
+    private val _dataTransferEvents = MutableSharedFlow<String>()
+    val dataTransferEvents: SharedFlow<String> = _dataTransferEvents.asSharedFlow()
 
     init {
         // Consolidated collectors using combine() to reduce coroutine overhead
@@ -216,6 +226,7 @@ class SettingsViewModel @Inject constructor(
                 userPreferencesRepository.lyricsSourcePreferenceFlow,
                 userPreferencesRepository.autoScanLrcFilesFlow,
                 userPreferencesRepository.blockedDirectoriesFlow,
+                userPreferencesRepository.hapticsEnabledFlow,
                 userPreferencesRepository.immersiveLyricsEnabledFlow,
                 userPreferencesRepository.immersiveLyricsTimeoutFlow
             ) { values ->
@@ -230,8 +241,9 @@ class SettingsViewModel @Inject constructor(
                     lyricsSourcePreference = values[7] as LyricsSourcePreference,
                     autoScanLrcFiles = values[8] as Boolean,
                     blockedDirectories = @Suppress("UNCHECKED_CAST") (values[9] as Set<String>),
-                    immersiveLyricsEnabled = values[10] as Boolean,
-                    immersiveLyricsTimeout = values[11] as Long
+                    hapticsEnabled = values[10] as Boolean,
+                    immersiveLyricsEnabled = values[11] as Boolean,
+                    immersiveLyricsTimeout = values[12] as Long
                 )
             }.collect { update ->
                 _uiState.update { state ->
@@ -246,6 +258,7 @@ class SettingsViewModel @Inject constructor(
                         lyricsSourcePreference = update.lyricsSourcePreference,
                         autoScanLrcFiles = update.autoScanLrcFiles,
                         blockedDirectories = update.blockedDirectories,
+                        hapticsEnabled = update.hapticsEnabled,
                         immersiveLyricsEnabled = update.immersiveLyricsEnabled,
                         immersiveLyricsTimeout = update.immersiveLyricsTimeout
                     )
@@ -625,6 +638,41 @@ class SettingsViewModel @Inject constructor(
     fun setTapBackgroundClosesPlayer(enabled: Boolean) {
         viewModelScope.launch {
             userPreferencesRepository.setTapBackgroundClosesPlayer(enabled)
+        }
+    }
+
+    fun setHapticsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            userPreferencesRepository.setHapticsEnabled(enabled)
+        }
+    }
+
+    fun exportAppData(uri: Uri, sections: Set<BackupSection>) {
+        if (sections.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDataTransferInProgress = true) }
+            val result = appDataBackupManager.exportToUri(uri, sections)
+            _uiState.update { it.copy(isDataTransferInProgress = false) }
+            result.fold(
+                onSuccess = { _dataTransferEvents.emit("Data exported successfully") },
+                onFailure = { _dataTransferEvents.emit("Export failed: ${it.localizedMessage ?: "Unknown error"}") }
+            )
+        }
+    }
+
+    fun importAppData(uri: Uri, sections: Set<BackupSection>) {
+        if (sections.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDataTransferInProgress = true) }
+            val result = appDataBackupManager.importFromUri(uri, sections)
+            _uiState.update { it.copy(isDataTransferInProgress = false) }
+            result.fold(
+                onSuccess = {
+                    _dataTransferEvents.emit("Data imported successfully")
+                    syncManager.sync()
+                },
+                onFailure = { _dataTransferEvents.emit("Import failed: ${it.localizedMessage ?: "Unknown error"}") }
+            )
         }
     }
 }
