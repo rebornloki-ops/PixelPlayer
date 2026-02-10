@@ -1248,7 +1248,9 @@ class PlayerViewModel @Inject constructor(
                     // Same queue context: jump directly for immediate, deterministic song changes.
                     remoteQueueLoadJob?.cancel()
                     castTransferStateHolder.markPendingRemoteSong(song)
-                    castStateHolder.castPlayer?.jumpToItem(targetItemId, 0L)
+                    if (targetItemId != null) {
+                        castStateHolder.castPlayer?.jumpToItem(targetItemId, 0L)
+                    }
                 }
                 contextMatchesRemoteSnapshot && currentRemoteId == song.id -> {
                     // Already on target.
@@ -2860,11 +2862,22 @@ class PlayerViewModel @Inject constructor(
             (castStateHolder.isRemotePlaybackActive.value || castStateHolder.isCastConnecting.value) &&
             selectedRouteId != null &&
             selectedRouteId != route.id
+        val isRetryingFailedSameRoute = isCastRoute &&
+            selectedRouteId != null &&
+            selectedRouteId == route.id &&
+            !castStateHolder.isRemotePlaybackActive.value &&
+            !castStateHolder.isCastConnecting.value
 
-        if (isSwitchingBetweenRemotes) {
+        if (isSwitchingBetweenRemotes || isRetryingFailedSameRoute) {
             castStateHolder.setPendingCastRouteId(route.id)
             castStateHolder.setCastConnecting(true)
-            sessionManager.currentCastSession?.let { sessionManager.endCurrentSession(true) }
+            val currentSession = sessionManager.currentCastSession
+            if (currentSession != null) {
+                sessionManager.endCurrentSession(true)
+            } else if (isRetryingFailedSameRoute) {
+                // Force route reselection flow when MediaRouter keeps the failed route selected.
+                castStateHolder.disconnect()
+            }
         } else {
             castStateHolder.setPendingCastRouteId(null)
         }

@@ -517,18 +517,53 @@ class CastTransferStateHolder @Inject constructor(
             castStateHolder.setCastSession(session)
             castStateHolder.setRemotePlaybackActive(false)
 
-            castStateHolder.castPlayer?.loadQueue(
-                songs = currentQueue,
-                startIndex = currentSongIndex,
-                startPosition = currentPosition,
-                repeatMode = castRepeatMode,
-                serverAddress = serverAddress,
-                autoPlay = wasPlaying, // Simplification
-                onComplete = { success ->
-                    if (!success) {
-                        Timber.tag(CAST_LOG_TAG).w("Initial Cast queue load failed; keeping session alive for retry.")
-                        session.remoteMediaClient?.requestStatus()
-                    } else {
+            val castPlayer = castStateHolder.castPlayer
+            if (castPlayer == null) {
+                Timber.tag(CAST_LOG_TAG).w("Cast player unavailable during transferPlayback.")
+                castStateHolder.setRemotePlaybackActive(false)
+                castStateHolder.setCastConnecting(false)
+                sessionManager.endCurrentSession(true)
+                return@launch
+            }
+
+            var initialLoadAttempt = 0
+            fun loadInitialQueueAttempt() {
+                initialLoadAttempt += 1
+                castPlayer.loadQueue(
+                    songs = currentQueue,
+                    startIndex = currentSongIndex,
+                    startPosition = currentPosition,
+                    repeatMode = castRepeatMode,
+                    serverAddress = serverAddress,
+                    autoPlay = wasPlaying, // Simplification
+                    onComplete = loadResult@{ success ->
+                        if (!success && initialLoadAttempt < 2) {
+                            Timber.tag(CAST_LOG_TAG).w(
+                                "Initial Cast queue load failed (attempt %d). Retrying once.",
+                                initialLoadAttempt
+                            )
+                            session.remoteMediaClient?.requestStatus()
+                            scope?.launch {
+                                delay(450)
+                                if (castStateHolder.castSession.value === session &&
+                                    !castStateHolder.isRemotePlaybackActive.value
+                                ) {
+                                    loadInitialQueueAttempt()
+                                }
+                            }
+                            return@loadResult
+                        }
+
+                        if (!success) {
+                            Timber.tag(CAST_LOG_TAG).w(
+                                "Initial Cast queue load failed after retry; ending session to avoid stuck route."
+                            )
+                            castStateHolder.setRemotePlaybackActive(false)
+                            castStateHolder.setCastConnecting(false)
+                            sessionManager.endCurrentSession(true)
+                            return@loadResult
+                        }
+
                         lastRemoteQueue = currentQueue
                         lastRemoteSongId = currentQueue.getOrNull(currentSongIndex)?.id
                         lastRemoteStreamPosition = currentPosition
@@ -536,11 +571,14 @@ class CastTransferStateHolder @Inject constructor(
                         playbackStateHolder.startProgressUpdates()
                         session.remoteMediaClient?.requestStatus()
                         currentQueue.getOrNull(currentSongIndex)?.id?.let(::launchAlignToTarget)
+
+                        castStateHolder.setRemotePlaybackActive(true)
+                        castStateHolder.setCastConnecting(false)
                     }
-                    castStateHolder.setRemotePlaybackActive(success)
-                    castStateHolder.setCastConnecting(false)
-                }
-            )
+                )
+            }
+
+            loadInitialQueueAttempt()
 
             session.remoteMediaClient?.registerCallback(remoteMediaClientCallback!!)
             session.remoteMediaClient?.addProgressListener(remoteProgressListener!!, 1000)

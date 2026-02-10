@@ -1293,7 +1293,8 @@ private fun CastDeviceRow(
                 onClick = when {
                     device.isSelected &&
                         device.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTED -> onDisconnect
-                    device.isSelected -> ({})
+                    device.isSelected &&
+                        device.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING -> ({})
                     else -> onSelect
                 }
             ),
