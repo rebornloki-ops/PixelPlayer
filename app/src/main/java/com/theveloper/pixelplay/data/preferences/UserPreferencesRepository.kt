@@ -125,6 +125,7 @@ constructor(
         val PERSISTENT_SHUFFLE_ENABLED = booleanPreferencesKey("persistent_shuffle_enabled")
         val DISABLE_CAST_AUTOPLAY = booleanPreferencesKey("disable_cast_autoplay")
         val SHOW_QUEUE_HISTORY = booleanPreferencesKey("show_queue_history")
+        val FULL_PLAYER_SHOW_FILE_INFO = booleanPreferencesKey("full_player_show_file_info")
         val FULL_PLAYER_DELAY_ALL = booleanPreferencesKey("full_player_delay_all")
         val FULL_PLAYER_DELAY_ALBUM = booleanPreferencesKey("full_player_delay_album")
         val FULL_PLAYER_DELAY_METADATA = booleanPreferencesKey("full_player_delay_metadata")
@@ -713,6 +714,17 @@ constructor(
     suspend fun setShowQueueHistory(show: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.SHOW_QUEUE_HISTORY] = show
+        }
+    }
+
+    val showPlayerFileInfoFlow: Flow<Boolean> =
+            dataStore.data.map { preferences ->
+                preferences[PreferencesKeys.FULL_PLAYER_SHOW_FILE_INFO] ?: true
+            }
+
+    suspend fun setShowPlayerFileInfo(show: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.FULL_PLAYER_SHOW_FILE_INFO] = show
         }
     }
 

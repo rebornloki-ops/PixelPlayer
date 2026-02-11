@@ -61,6 +61,7 @@ data class SettingsUiState(
     val modelsFetchError: String? = null,
     val appRebrandDialogShown: Boolean = false,
     val fullPlayerLoadingTweaks: FullPlayerLoadingTweaks = FullPlayerLoadingTweaks(),
+    val showPlayerFileInfo: Boolean = true,
     val usePlayerSheetV2: Boolean = false,
     // Developer Options
     val albumArtQuality: AlbumArtQuality = AlbumArtQuality.MEDIUM,
@@ -104,7 +105,8 @@ private sealed interface SettingsUiUpdate {
         val navBarStyle: String,
         val libraryNavigationMode: String,
         val carouselStyle: String,
-        val launchTab: String
+        val launchTab: String,
+        val showPlayerFileInfo: Boolean
     ) : SettingsUiUpdate
     
     data class Group2(
@@ -194,7 +196,8 @@ class SettingsViewModel @Inject constructor(
                 userPreferencesRepository.navBarStyleFlow,
                 userPreferencesRepository.libraryNavigationModeFlow,
                 userPreferencesRepository.carouselStyleFlow,
-                userPreferencesRepository.launchTabFlow
+                userPreferencesRepository.launchTabFlow,
+                userPreferencesRepository.showPlayerFileInfoFlow
             ) { values ->
                 SettingsUiUpdate.Group1(
                     appRebrandDialogShown = values[0] as Boolean,
@@ -206,7 +209,8 @@ class SettingsViewModel @Inject constructor(
                     navBarStyle = values[6] as String,
                     libraryNavigationMode = values[7] as String,
                     carouselStyle = values[8] as String,
-                    launchTab = values[9] as String
+                    launchTab = values[9] as String,
+                    showPlayerFileInfo = values[10] as Boolean
                 )
             }.collect { update ->
                 _uiState.update { state ->
@@ -220,7 +224,8 @@ class SettingsViewModel @Inject constructor(
                         navBarStyle = update.navBarStyle,
                         libraryNavigationMode = update.libraryNavigationMode,
                         carouselStyle = update.carouselStyle,
-                        launchTab = update.launchTab
+                        launchTab = update.launchTab,
+                        showPlayerFileInfo = update.showPlayerFileInfo
                     )
                 }
             }
@@ -394,6 +399,12 @@ class SettingsViewModel @Inject constructor(
     fun setCarouselStyle(style: String) {
         viewModelScope.launch {
             userPreferencesRepository.setCarouselStyle(style)
+        }
+    }
+
+    fun setShowPlayerFileInfo(show: Boolean) {
+        viewModelScope.launch {
+            userPreferencesRepository.setShowPlayerFileInfo(show)
         }
     }
 

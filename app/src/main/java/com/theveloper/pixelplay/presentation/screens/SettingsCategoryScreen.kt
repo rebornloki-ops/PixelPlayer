@@ -475,6 +475,13 @@ fun SettingsCategoryScreen(
                                     onSelectionChanged = { settingsViewModel.setPlayerThemePreference(it) },
                                     leadingIcon = { Icon(Icons.Outlined.PlayCircle, null, tint = MaterialTheme.colorScheme.secondary) }
                                 )
+                                SwitchSettingItem(
+                                    title = "Show player file info",
+                                    subtitle = "Show codec, bitrate, and sample rate in the player progress section.",
+                                    checked = uiState.showPlayerFileInfo,
+                                    onCheckedChange = { settingsViewModel.setShowPlayerFileInfo(it) },
+                                    leadingIcon = { Icon(painterResource(R.drawable.rounded_attach_file_24), null, tint = MaterialTheme.colorScheme.secondary) }
+                                )
                                 SettingsItem(
                                     title = "Album Art Palette Style",
                                     subtitle = "Current: ${uiState.albumArtPaletteStyle.label}. Open live preview and choose style.",
@@ -653,18 +660,6 @@ fun SettingsCategoryScreen(
                                 )
                             }
 
-                            SettingsSubsection(
-                                title = "Player Gestures",
-                                addBottomSpace = false
-                            ) {
-                                SwitchSettingItem(
-                                    title = "Tap background closes player",
-                                    subtitle = "Tap the blurred background to close the player sheet.",
-                                    checked = uiState.tapBackgroundClosesPlayer,
-                                    onCheckedChange = { settingsViewModel.setTapBackgroundClosesPlayer(it) },
-                                    leadingIcon = { Icon(painterResource(R.drawable.rounded_touch_app_24), null, tint = MaterialTheme.colorScheme.secondary) }
-                                )
-                            }
                         }
                         SettingsCategory.BEHAVIOR -> {
                             SettingsSubsection(
@@ -682,6 +677,17 @@ fun SettingsCategoryScreen(
                                             tint = MaterialTheme.colorScheme.secondary
                                         )
                                     }
+                                )
+                            }
+                            SettingsSubsection(
+                                title = "Player Gestures"
+                            ) {
+                                SwitchSettingItem(
+                                    title = "Tap background closes player",
+                                    subtitle = "Tap the blurred background to close the player sheet.",
+                                    checked = uiState.tapBackgroundClosesPlayer,
+                                    onCheckedChange = { settingsViewModel.setTapBackgroundClosesPlayer(it) },
+                                    leadingIcon = { Icon(painterResource(R.drawable.rounded_touch_app_24), null, tint = MaterialTheme.colorScheme.secondary) }
                                 )
                             }
                             SettingsSubsection(

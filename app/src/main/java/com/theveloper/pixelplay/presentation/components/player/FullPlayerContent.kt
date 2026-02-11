@@ -181,6 +181,7 @@ fun FullPlayerContent(
     val lyricsSyncOffset by playerViewModel.currentSongLyricsSyncOffset.collectAsState()
     val albumArtQuality by playerViewModel.albumArtQuality.collectAsState()
     val playbackAudioMetadata by playerViewModel.playbackAudioMetadata.collectAsState()
+    val showPlayerFileInfo by playerViewModel.showPlayerFileInfo.collectAsState()
     val immersiveLyricsEnabled by playerViewModel.immersiveLyricsEnabled.collectAsState()
     val immersiveLyricsTimeout by playerViewModel.immersiveLyricsTimeout.collectAsState()
     val isImmersiveTemporarilyDisabled by playerViewModel.isImmersiveTemporarilyDisabled.collectAsState()
@@ -466,6 +467,7 @@ fun FullPlayerContent(
             audioMimeType = if (isMetadataForCurrentSong) playbackAudioMetadata.mimeType else null,
             audioBitrate = if (isMetadataForCurrentSong) playbackAudioMetadata.bitrate else null,
             audioSampleRate = if (isMetadataForCurrentSong) playbackAudioMetadata.sampleRate else null,
+            showAudioFileInfo = showPlayerFileInfo,
             onSeek = onSeek,
             expansionFractionProvider = expansionFractionProvider,
             isPlayingProvider = isPlayingProvider,
@@ -1113,6 +1115,7 @@ private fun PlayerProgressBarSection(
     audioMimeType: String?,
     audioBitrate: Int?,
     audioSampleRate: Int?,
+    showAudioFileInfo: Boolean,
     onSeek: (Long) -> Unit,
     expansionFractionProvider: () -> Float,
     isPlayingProvider: () -> Boolean,
@@ -1139,16 +1142,22 @@ private fun PlayerProgressBarSection(
         kotlin.math.abs(reportedDuration - hintDuration) <= 1500L -> reportedDuration
         else -> minOf(reportedDuration, hintDuration)
     }
-    val audioMetaLabel = remember(audioMimeType, audioBitrate, audioSampleRate) {
-        formatAudioMetaLabel(
-            mimeType = audioMimeType,
-            bitrate = audioBitrate,
-            sampleRate = audioSampleRate
-        )
+    val audioMetaLabel = remember(showAudioFileInfo, audioMimeType, audioBitrate, audioSampleRate) {
+        if (showAudioFileInfo) {
+            formatAudioMetaLabel(
+                mimeType = audioMimeType,
+                bitrate = audioBitrate,
+                sampleRate = audioSampleRate
+            )
+        } else {
+            null
+        }
     }
     var displayAudioMetaLabel by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(songId, audioMetaLabel) {
-        if (!audioMetaLabel.isNullOrBlank()) {
+    LaunchedEffect(songId, audioMetaLabel, showAudioFileInfo) {
+        if (!showAudioFileInfo) {
+            displayAudioMetaLabel = null
+        } else if (!audioMetaLabel.isNullOrBlank()) {
             displayAudioMetaLabel = audioMetaLabel
         } else {
             kotlinx.coroutines.delay(500)
@@ -1249,7 +1258,7 @@ private fun PlayerProgressBarSection(
                      expansionFraction = expansionFraction,
                      color = placeholderColor,
                      onColor = placeholderOnColor,
-                     showAudioMetaChip = !displayAudioMetaLabel.isNullOrBlank()
+                     showAudioMetaChip = showAudioFileInfo && !displayAudioMetaLabel.isNullOrBlank()
                  )
              }
         }
