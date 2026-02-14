@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -754,7 +755,10 @@ internal fun MiniPlayerContentInternal(
                 contentDescription = "Carátula de ${song.title}",
                 shape = CircleShape,
                 targetSize = Size(150, 150),
-                modifier = Modifier.size(44.dp)
+                modifier = Modifier.size(44.dp),
+                placeholderModel = if (song.albumArtUriString?.startsWith("telegram_art") == true) {
+                     "${song.albumArtUriString}?quality=thumb"
+                } else null
             )
             if (isCastConnecting) {
                 CircularProgressIndicator(

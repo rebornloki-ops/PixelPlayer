@@ -30,19 +30,29 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -88,7 +98,11 @@ fun LibraryActionRow(
     folderRootLabel: String,
     onFolderClick: (String) -> Unit,
     onNavigateBack: () -> Unit,
-    isShuffleEnabled: Boolean = false
+    isShuffleEnabled: Boolean = false,
+    // Storage Filter
+    showStorageFilterButton: Boolean = false,
+    currentStorageFilter: com.theveloper.pixelplay.data.model.StorageFilter = com.theveloper.pixelplay.data.model.StorageFilter.ALL,
+    onStorageFilterClick: () -> Unit = {}
 ) {
     Row(
         modifier = modifier
@@ -155,8 +169,8 @@ fun LibraryActionRow(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         modifier = Modifier.height(genHeight)
                     ) {
-                        val icon = if (isPlaylistTab) Icons.Rounded.PlaylistAdd else Icons.Rounded.Shuffle
-                        val text = if (isPlaylistTab) "Create" else if (isShuffleEnabled) "Shuffle On" else "Shuffle"
+                        val icon = if (isPlaylistTab) Icons.AutoMirrored.Rounded.PlaylistAdd else Icons.Rounded.Shuffle
+                        val text = if (isPlaylistTab) "New" else if (isShuffleEnabled) "Shuffle On" else "Shuffle"
                         val contentDesc = if (isPlaylistTab) "Create New Playlist" else "Shuffle Play"
 
                         Row(
@@ -250,16 +264,43 @@ fun LibraryActionRow(
 
         if (showSortButton) {
             val outerCorner = 26.dp
-            val innerCorner by animateDpAsState(
-                targetValue = if (showLocateButton) 8.dp else outerCorner,
-                label = "SortButtonsInnerCorner"
-            )
-            val actionButtonsGap by animateDpAsState(
-                targetValue = if (showLocateButton) 4.dp else 0.dp,
-                label = "SortButtonsGap"
+            
+            // Logic for Sort Button (Rightmost)
+            val sortStartCorner by animateDpAsState(
+                targetValue = if (showLocateButton || showStorageFilterButton) 8.dp else outerCorner,
+                label = "SortStartCorner"
             )
 
+            // Logic for Filter Button (Middle or Left if Locate hidden)
+            // Filter is visible if showStorageFilterButton is true
+            val filterEndCorner = 8.dp // Connected to Sort
+            val filterStartCorner by animateDpAsState(
+                targetValue = if (showLocateButton) 8.dp else outerCorner,
+                label = "FilterStartCorner"
+            )
+            
+            // Logic for Locate Button (Leftmost)
+            val locateEndCorner = 8.dp // Connected to Filer or Sort
+
+            // Gaps
+            // If Filter is shown, gap is between Filter and Sort? OR if we use connected buttons, gap is 4dp between groups or 0dp between connected?
+            // Existing code used 4dp gap and 8dp corner. 
+            // "SortButtonsGap" was 4dp if showLocateButton else 0dp.
+            // If we want "connected" look (segmented), gap should be small (1dp or 2dp) or 0.
+            // But existing code uses `4.dp`.
+            
+            val gapBetweenLocateAndNext by animateDpAsState(
+                targetValue = if (showLocateButton) 4.dp else 0.dp,
+                label = "GapLocate"
+            )
+            val gapBetweenFilterAndSort by animateDpAsState(
+                targetValue = if (showStorageFilterButton) 4.dp else 0.dp,
+                label = "GapFilter"
+            )
+
+
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Locate Button
                 AnimatedVisibility(
                     visible = showLocateButton,
                     enter = slideInHorizontally(initialOffsetX = { it / 2 }) + fadeIn(),
@@ -270,8 +311,8 @@ fun LibraryActionRow(
                         shape = RoundedCornerShape(
                             topStart = outerCorner,
                             bottomStart = outerCorner,
-                            topEnd = innerCorner,
-                            bottomEnd = innerCorner
+                            topEnd = locateEndCorner,
+                            bottomEnd = locateEndCorner
                         ),
                         modifier = Modifier.size(genHeight)
                     ) {
@@ -281,14 +322,63 @@ fun LibraryActionRow(
                         )
                     }
                 }
+                
+                Spacer(modifier = Modifier.width(gapBetweenLocateAndNext))
 
-                Spacer(modifier = Modifier.width(actionButtonsGap))
+                // Storage Filter Button
+                AnimatedVisibility(
+                    visible = showStorageFilterButton,
+                    enter = slideInHorizontally(initialOffsetX = { it / 2 }) + fadeIn(),
+                    exit = slideOutHorizontally(targetOffsetX = { it / 2 }) + fadeOut()
+                ) {
+                     val finalIcon = when(currentStorageFilter) {
+                         com.theveloper.pixelplay.data.model.StorageFilter.ALL -> Icons.Rounded.FilterList
+                         com.theveloper.pixelplay.data.model.StorageFilter.ONLINE -> Icons.Rounded.Cloud
+                         com.theveloper.pixelplay.data.model.StorageFilter.OFFLINE -> Icons.Rounded.PhoneAndroid
+                     }
+                     val tooltipText = when(currentStorageFilter) {
+                         com.theveloper.pixelplay.data.model.StorageFilter.ALL -> "All Songs"
+                         com.theveloper.pixelplay.data.model.StorageFilter.ONLINE -> "Online"
+                         com.theveloper.pixelplay.data.model.StorageFilter.OFFLINE -> "Offline"
+                     }
+                     val tooltipState = rememberTooltipState()
 
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    TooltipBox(
+                        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(),
+                        tooltip = {
+                            PlainTooltip {
+                                Text(tooltipText)
+                            }
+                        },
+                        state = tooltipState
+                    ) {
+                        FilledTonalIconButton(
+                            onClick = onStorageFilterClick,
+                            shape = RoundedCornerShape(
+                                topStart = filterStartCorner,
+                                bottomStart = filterStartCorner,
+                                topEnd = filterEndCorner,
+                                bottomEnd = filterEndCorner
+                            ),
+                            modifier = Modifier.size(genHeight)
+                        ) {
+                             Icon(
+                                imageVector = finalIcon,
+                                contentDescription = tooltipText
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(gapBetweenFilterAndSort))
+
+                // Sort Button
                 FilledTonalIconButton(
                     onClick = onSortClick,
                     shape = RoundedCornerShape(
-                        topStart = innerCorner,
-                        bottomStart = innerCorner,
+                        topStart = sortStartCorner,
+                        bottomStart = sortStartCorner,
                         topEnd = outerCorner,
                         bottomEnd = outerCorner
                     ),
@@ -353,7 +443,7 @@ fun Breadcrumbs(
             modifier = Modifier.size(36.dp),
             enabled = currentFolder != null
         ) {
-            Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
         }
         Spacer(Modifier.width(8.dp))
 

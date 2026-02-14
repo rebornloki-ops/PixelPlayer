@@ -34,7 +34,8 @@ fun OptimizedAlbumArt(
     uri: Any?,
     title: String,
     modifier: Modifier = Modifier,
-    targetSize: Size = Size.ORIGINAL
+    targetSize: Size = Size.ORIGINAL,
+    placeholderModel: Any? = null
 ) {
     val context = LocalContext.current
 
@@ -70,7 +71,18 @@ fun OptimizedAlbumArt(
         modifier = modifier,
         contentScale = ContentScale.Crop,
         loading = {
-            PlaceholderContent(title = title)
+            if (placeholderModel != null) {
+                 SubcomposeAsyncImage(
+                    model = placeholderModel,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    loading = { PlaceholderContent(title = title) },
+                    error = { PlaceholderContent(title = title) }
+                )
+            } else {
+                PlaceholderContent(title = title)
+            }
         },
         error = {
             PlaceholderContent(title = title)

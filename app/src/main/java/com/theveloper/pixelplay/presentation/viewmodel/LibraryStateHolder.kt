@@ -62,12 +62,19 @@ class LibraryStateHolder @Inject constructor(
     private val _currentSongSortOption = MutableStateFlow<SortOption>(SortOption.SongDefaultOrder)
     val currentSongSortOption = _currentSongSortOption.asStateFlow()
 
+    // Filter Options
+    private val _currentStorageFilter = MutableStateFlow(com.theveloper.pixelplay.data.model.StorageFilter.ALL)
+    val currentStorageFilter = _currentStorageFilter.asStateFlow()
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val songsPagingFlow: kotlinx.coroutines.flow.Flow<androidx.paging.PagingData<Song>> = _currentSongSortOption
-        .flatMapLatest { sortOption ->
-            musicRepository.getPaginatedSongs(sortOption)
+    val songsPagingFlow: kotlinx.coroutines.flow.Flow<androidx.paging.PagingData<Song>> = 
+        kotlinx.coroutines.flow.combine(_currentSongSortOption, _currentStorageFilter) { sort, filter ->
+            sort to filter
+        }.flatMapLatest { (sortOption, filter) ->
+            musicRepository.getPaginatedSongs(sortOption, filter)
         }
         .flowOn(Dispatchers.IO)
+
 
     private val _currentAlbumSortOption = MutableStateFlow<SortOption>(SortOption.AlbumTitleAZ)
     val currentAlbumSortOption = _currentAlbumSortOption.asStateFlow()
@@ -196,7 +203,10 @@ class LibraryStateHolder @Inject constructor(
 
         albumsJob = scope?.launch {
             _isLoadingCategories.value = true
-            musicRepository.getAlbums().collect { albums ->
+            @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+            _currentStorageFilter.flatMapLatest { filter ->
+                musicRepository.getAlbums(filter)
+            }.collect { albums ->
                 _albums.value = albums.toImmutableList()
                 sortAlbums(_currentAlbumSortOption.value, persist = false)
                 _isLoadingCategories.value = false
@@ -356,6 +366,10 @@ class LibraryStateHolder @Inject constructor(
         _allSongs.update { currentList ->
             currentList.filter { it.id != songId }.toImmutableList()
         }
+    }
+
+    fun setStorageFilter(filter: com.theveloper.pixelplay.data.model.StorageFilter) {
+        _currentStorageFilter.value = filter
     }
 }
 

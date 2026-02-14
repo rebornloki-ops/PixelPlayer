@@ -330,7 +330,26 @@ class LyricsRepositoryImpl @Inject constructor(
                 }
             }
 
-            val results = runSearchStrategiesFast(searchStrategies)
+            var results = runSearchStrategiesFast(searchStrategies)
+
+            // Strategy 4: Aggressive fallback - remove artist and trim title at separators (-, ,, (, ), $, #, :, %)
+            if (results.isEmpty()) {
+                 val separators = charArrayOf('-', ',', '(', ')', '$', '#', ':', '%')
+                 val index = cleanTitle.indexOfAny(separators)
+                 if (index != -1) {
+                     val superCleanTitle = cleanTitle.substring(0, index).trim()
+                     if (superCleanTitle.isNotEmpty()) {
+                          Log.d(TAG, "Strategy 4: Searching with super simplified title: '$superCleanTitle' (no artist)")
+                          val fallbackResults = runCatching {
+                                lrcLibApiService.searchLyrics(trackName = superCleanTitle)
+                          }.getOrNull()
+                          if (!fallbackResults.isNullOrEmpty()) {
+                              results = fallbackResults.toList()
+                          }
+                     }
+                 }
+            }
+
             if (results.isEmpty()) {
                 Log.d(TAG, "No results from LRCLIB API")
                 return@withContext null
@@ -357,15 +376,18 @@ class LyricsRepositoryImpl @Inject constructor(
                         Log.d(TAG, "LRCLIB lyrics found - Synced: ${!bestMatch.syncedLyrics.isNullOrBlank()}, Plain: ${!bestMatch.plainLyrics.isNullOrBlank()}")
                         
                         // Save to database
-                        // Save to database
-                        lyricsDao.insert(
-                            com.theveloper.pixelplay.data.database.LyricsEntity(
-                                songId = song.id.toLong(),
-                                content = rawLyrics,
-                                isSynced = !bestMatch.syncedLyrics.isNullOrBlank(),
-                                source = "remote"
+                        try {
+                            lyricsDao.insert(
+                                com.theveloper.pixelplay.data.database.LyricsEntity(
+                                    songId = song.id.toLong(),
+                                    content = rawLyrics,
+                                    isSynced = !bestMatch.syncedLyrics.isNullOrBlank(),
+                                    source = "remote"
+                                )
                             )
-                        )
+                        } catch (e: NumberFormatException) {
+                            Log.w(TAG, "Skipping database save for non-numeric song ID: ${song.id} (likely Telegram song). Lyrics will be cached in JSON.")
+                        }
                         
                         return@withContext parsedLyrics
                     }
@@ -505,6 +527,11 @@ class LyricsRepositoryImpl @Inject constructor(
                 return@withContext parsedLyrics.copy(areFromRemote = false)
             }
         }
+        
+        // Skip embedded lyrics for Telegram songs (not supported yet/streamed)
+        if (song.contentUriString.startsWith("telegram://") || song.contentUriString.isEmpty()) {
+            return@withContext null
+        }
 
         // Then try to read from file metadata
         return@withContext try {
@@ -558,16 +585,18 @@ class LyricsRepositoryImpl @Inject constructor(
                     val best = results.first()
                     val rawLyricsToSave = best.rawLyrics
 
-
-
-                    lyricsDao.insert(
-                         com.theveloper.pixelplay.data.database.LyricsEntity(
-                             songId = song.id.toLong(),
-                             content = rawLyricsToSave,
-                             isSynced = !best.lyrics.synced.isNullOrEmpty(),
-                             source = "remote"
-                         )
-                    )
+                    try {
+                        lyricsDao.insert(
+                             com.theveloper.pixelplay.data.database.LyricsEntity(
+                                 songId = song.id.toLong(),
+                                 content = rawLyricsToSave,
+                                 isSynced = !best.lyrics.synced.isNullOrEmpty(),
+                                 source = "remote"
+                             )
+                        )
+                    } catch (e: NumberFormatException) {
+                        Log.w(TAG, "Skipping DB update for non-numeric ID: ${song.id}")
+                    }
 
                     val cacheKey = generateCacheKey(song.id)
                     synchronized(lyricsCache) {
@@ -595,14 +624,18 @@ class LyricsRepositoryImpl @Inject constructor(
                     return@withContext Result.failure(LyricsException("Parsed lyrics are empty"))
                 }
 
-                lyricsDao.insert(
-                     com.theveloper.pixelplay.data.database.LyricsEntity(
-                         songId = song.id.toLong(),
-                         content = rawLyricsToSave,
-                         isSynced = !parsedLyrics.synced.isNullOrEmpty(),
-                         source = "remote"
-                     )
-                )
+                try {
+                    lyricsDao.insert(
+                         com.theveloper.pixelplay.data.database.LyricsEntity(
+                             songId = song.id.toLong(),
+                             content = rawLyricsToSave,
+                             isSynced = !parsedLyrics.synced.isNullOrEmpty(),
+                             source = "remote"
+                         )
+                    )
+                } catch (e: NumberFormatException) {
+                    Log.w(TAG, "Skipping DB update for non-numeric ID in fallback: ${song.id}")
+                }
 
                 val cacheKey = generateCacheKey(song.id)
                 synchronized(lyricsCache) {
@@ -779,7 +812,11 @@ class LyricsRepositoryImpl @Inject constructor(
         synchronized(lyricsCache) {
             lyricsCache.remove(cacheKey)
         }
-        lyricsDao.deleteLyrics(songId)
+        try {
+            lyricsDao.deleteLyrics(songId)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error removing lyrics from DB for ID: $songId", e)
+        }
         
         // Also remove JSON cache
         try {
@@ -864,16 +901,20 @@ class LyricsRepositoryImpl @Inject constructor(
                                     val content = foundFile.readText()
                                     // Verify validity
                                     if (LyricsUtils.parseLyrics(content).isValid()) {
-                                        lyricsDao.insert(
-                                             com.theveloper.pixelplay.data.database.LyricsEntity(
-                                                 songId = song.id.toLong(),
-                                                 content = content,
-                                                 isSynced = LyricsUtils.parseLyrics(content).synced?.isNotEmpty() == true,
-                                                 source = "local_file"
-                                             )
-                                        )
-                                        updatedCount.incrementAndGet()
-                                        LogUtils.d(this@LyricsRepositoryImpl, "Auto-assigned lyrics from ${foundFile.name}")
+                                        try {
+                                            lyricsDao.insert(
+                                                 com.theveloper.pixelplay.data.database.LyricsEntity(
+                                                     songId = song.id.toLong(),
+                                                     content = content,
+                                                     isSynced = LyricsUtils.parseLyrics(content).synced?.isNotEmpty() == true,
+                                                     source = "local_file"
+                                                 )
+                                            )
+                                            updatedCount.incrementAndGet()
+                                            LogUtils.d(this@LyricsRepositoryImpl, "Auto-assigned lyrics from ${foundFile.name}")
+                                        } catch (e: Exception) {
+                                            Log.w(TAG, "Skipping DB update for ID in scanner: ${song.id}", e)
+                                        }
                                     }
                                 }
                             }

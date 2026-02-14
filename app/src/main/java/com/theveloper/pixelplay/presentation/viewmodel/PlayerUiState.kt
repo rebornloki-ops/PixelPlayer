@@ -56,5 +56,6 @@ data class PlayerUiState(
     val searchHistory: ImmutableList<SearchHistoryItem> = persistentListOf(),
     val searchQuery: String = "",
     val isSyncingLibrary: Boolean = false,
-    val selectedSearchFilter: SearchFilterType = SearchFilterType.ALL
+    val selectedSearchFilter: SearchFilterType = SearchFilterType.ALL,
+    val currentStorageFilter: com.theveloper.pixelplay.data.model.StorageFilter = com.theveloper.pixelplay.data.model.StorageFilter.ALL
 )

@@ -147,6 +147,9 @@ import com.theveloper.pixelplay.data.preferences.UserPreferencesRepository.Equal
 import androidx.compose.material.icons.rounded.ViewQuilt
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.material.icons.automirrored.rounded.ShowChart
+import androidx.compose.material.icons.automirrored.rounded.ViewQuilt
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.ui.platform.LocalView
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -437,8 +440,8 @@ fun EqualizerTopBar(
                 Icon(
                     imageVector = when(viewMode) {
                         EqualizerViewMode.SLIDERS -> Icons.Rounded.GraphicEq
-                        EqualizerViewMode.GRAPH -> Icons.Rounded.ShowChart
-                        EqualizerViewMode.HYBRID -> Icons.Rounded.ViewQuilt
+                        EqualizerViewMode.GRAPH -> Icons.AutoMirrored.Rounded.ShowChart
+                        EqualizerViewMode.HYBRID -> Icons.AutoMirrored.Rounded.ViewQuilt
                     },
                     contentDescription = "Change View Mode"
                 )
@@ -1534,7 +1537,7 @@ private fun VolumeControlCard(
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.VolumeUp,
+                    imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )

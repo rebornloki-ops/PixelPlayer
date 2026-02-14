@@ -112,6 +112,10 @@ import timber.log.Timber
 import java.io.File
 import java.util.ArrayDeque
 import javax.inject.Inject
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import coil.imageLoader
+import coil.memory.MemoryCache
 
 private const val CAST_LOG_TAG = "PlayerCastTransfer"
 
@@ -126,6 +130,7 @@ data class PlaybackAudioMetadata(
 
 @UnstableApi
 @SuppressLint("LogNotTimber")
+@OptIn(coil.annotation.ExperimentalCoilApi::class)
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -136,6 +141,7 @@ class PlayerViewModel @Inject constructor(
 
     private val dualPlayerEngine: DualPlayerEngine,
     private val appShortcutManager: AppShortcutManager,
+    private val telegramCacheManager: com.theveloper.pixelplay.data.telegram.TelegramCacheManager,
     private val listeningStatsTracker: ListeningStatsTracker,
     private val dailyMixStateHolder: DailyMixStateHolder,
     private val lyricsStateHolder: LyricsStateHolder,
@@ -151,7 +157,9 @@ class PlayerViewModel @Inject constructor(
     private val metadataEditStateHolder: MetadataEditStateHolder,
     private val externalMediaStateHolder: ExternalMediaStateHolder,
     val themeStateHolder: ThemeStateHolder,
-    val multiSelectionStateHolder: MultiSelectionStateHolder
+    val multiSelectionStateHolder: MultiSelectionStateHolder,
+    private val sessionToken: SessionToken,
+    private val mediaControllerFactory: com.theveloper.pixelplay.data.media.MediaControllerFactory
 ) : ViewModel() {
 
     private val _playerUiState = MutableStateFlow(PlayerUiState())
@@ -197,6 +205,90 @@ class PlayerViewModel @Inject constructor(
     }
 
 
+
+    /**
+     * Paginated songs for efficient display in LibraryScreen.
+     * Uses Paging 3 for memory-efficient loading of large libraries.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val paginatedSongs: Flow<PagingData<Song>> = libraryStateHolder.songsPagingFlow
+        .cachedIn(viewModelScope)
+    
+    // Observe embedded art updates for Telegram songs - refresh colors when available
+    private val embeddedArtObserverJob = viewModelScope.launch {
+        launch {
+            telegramCacheManager.embeddedArtUpdated.collect { updatedArtUri ->
+                refreshArtwork(updatedArtUri)
+            }
+        }
+        
+        launch {
+            musicRepository.telegramRepository.downloadCompleted
+                .onEach { fileId: Int ->
+                    // Check if the downloaded file belongs to the current song
+                    val currentSong = playbackStateHolder.stablePlayerState.value.currentSong
+                    if (currentSong != null && currentSong.contentUriString.startsWith("telegram:")) {
+                        // Refresh art if the downloaded file is the audio file or the thumbnail
+                         val uri = Uri.parse(currentSong.contentUriString)
+                         val chatId = uri.host?.toLongOrNull()
+                         val messageId = uri.pathSegments.firstOrNull()?.toLongOrNull()
+                         
+                         if (chatId != null && messageId != null) {
+                             // Force a refresh attempt for this song
+                             // We construct the art URI manually since we know the pattern
+                             val artUri = "telegram_art://$chatId/$messageId"
+                             refreshArtwork(artUri)
+                         }
+                    }
+                }
+                .launchIn(this)
+        }
+
+    }
+
+    private suspend fun refreshArtwork(updatedArtUri: String) {
+        val currentState = playbackStateHolder.stablePlayerState.value
+        val currentSong = currentState.currentSong
+        // Check if it matches, ignoring query params for comparison
+        val currentUriClean = currentSong?.albumArtUriString?.substringBefore('?')
+        val updatedUriClean = updatedArtUri.substringBefore('?')
+        
+        if (currentUriClean == updatedUriClean) {
+            Timber.d("PlayerViewModel: Embedded art updated for current song, forcing refresh")
+            
+            // 1. Invalidate Coil cache for the BASE uri (without params)
+            // This ensures next time we load it without params, it's fresh too.
+            val baseUri = currentUriClean ?: updatedUriClean
+            
+            // Remove from Memory Cache
+            context.imageLoader.memoryCache?.keys?.forEach { key ->
+                if (key.toString().contains(baseUri)) {
+                    context.imageLoader.memoryCache?.remove(key)
+                }
+            }
+            // Remove from Disk Cache
+            context.imageLoader.diskCache?.remove(baseUri)
+
+            // 2. Extract Colors (using base URI)
+            themeStateHolder.extractAndGenerateColorScheme(updatedArtUri.toUri(), updatedArtUri, isPreload = false)
+            
+            // 3. FORCE UI REFRESH by updating the URI with a version timestamp
+            // This forces SmartImage to see a "new" model and reload.
+            // We keep the quality param if it exists, or add a version param.
+            val newUri = if (updatedArtUri.contains("?")) {
+                "$updatedArtUri&v=${System.currentTimeMillis()}"
+            } else {
+                "$updatedArtUri?v=${System.currentTimeMillis()}"
+            }
+            
+            val updatedSong = currentSong!!.copy(albumArtUriString = newUri)
+            
+            // Update State
+            playbackStateHolder.updateStablePlayerState { state ->
+                state.copy(currentSong = updatedSong)
+            }
+        }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val currentSongArtists: StateFlow<List<Artist>> = stablePlayerState
@@ -364,6 +456,9 @@ class PlayerViewModel @Inject constructor(
     // Lyrics search UI state - managed by LyricsStateHolder
     val lyricsSearchUiState: StateFlow<LyricsSearchUiState> = lyricsStateHolder.searchUiState
 
+    private var bufferingDebounceJob: Job? = null
+
+
 
     // Toast Events
     private val _toastEvents = MutableSharedFlow<String>()
@@ -373,7 +468,40 @@ class PlayerViewModel @Inject constructor(
     val artistNavigationRequests = _artistNavigationRequests.asSharedFlow()
     private val _searchNavDoubleTapEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val searchNavDoubleTapEvents = _searchNavDoubleTapEvents.asSharedFlow()
+    
+    // New event for scrolling to a specific index in the songs list
+    private val _scrollToIndexEvent = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val scrollToIndexEvent = _scrollToIndexEvent.asSharedFlow()
+    
     private var artistNavigationJob: Job? = null
+
+    fun requestLocateCurrentSong() {
+        val currentSongId = stablePlayerState.value.currentSong?.id ?: return
+        val currentIdLong = currentSongId.toLongOrNull() ?: return // Telegram songs with negative IDs are also Longs
+        
+        viewModelScope.launch {
+            try {
+                // Get current sort option and filter from UI state
+                val sortOption = playerUiState.value.currentSongSortOption
+                val storageFilter = playerUiState.value.currentStorageFilter
+                
+                // Fetch sorted IDs from DB
+                val sortedIds = musicRepository.getSongIdsSorted(sortOption, storageFilter)
+                
+                // Find index
+                val index = sortedIds.indexOf(currentIdLong)
+                
+                if (index != -1) {
+                    _scrollToIndexEvent.emit(index)
+                } else {
+                    sendToast("Song not found in current list")
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to locate current song")
+                sendToast("Could not locate song")
+            }
+        }
+    }
 
     val castRoutes: StateFlow<List<MediaRouter.RouteInfo>> = castStateHolder.castRoutes
     val selectedRoute: StateFlow<MediaRouter.RouteInfo?> = castStateHolder.selectedRoute
@@ -547,8 +675,8 @@ class PlayerViewModel @Inject constructor(
 
 
     private var mediaController: MediaController? = null
-    private val sessionToken = SessionToken(context, ComponentName(context, MusicService::class.java))
-    private val mediaControllerListener = object : MediaController.Listener {
+    // SessionToken injected via constructor
+    private val mediaControllerListener = object : MediaController.Listener, Player.Listener {
         override fun onCustomCommand(
             controller: MediaController,
             command: SessionCommand,
@@ -568,11 +696,30 @@ class PlayerViewModel @Inject constructor(
             }
             return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
         }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            super.onPlaybackStateChanged(playbackState)
+            
+            // Debounce buffering state to avoid flickering
+            bufferingDebounceJob?.cancel()
+            
+            if (playbackState == Player.STATE_BUFFERING) {
+                bufferingDebounceJob = viewModelScope.launch {
+                    delay(150) // Wait 150ms before showing buffering indicator
+                    playbackStateHolder.updateStablePlayerState { state ->
+                        state.copy(isBuffering = true)
+                    }
+                }
+            } else {
+                // Immediately hide buffering when not buffering
+                playbackStateHolder.updateStablePlayerState { state ->
+                    state.copy(isBuffering = false)
+                }
+            }
+        }
     }
     private val mediaControllerFuture: ListenableFuture<MediaController> =
-        MediaController.Builder(context, sessionToken)
-            .setListener(mediaControllerListener)
-            .buildAsync()
+        mediaControllerFactory.create(context, sessionToken, mediaControllerListener)
     private var pendingRepeatMode: Int? = null
 
     private var pendingPlaybackAction: (() -> Unit)? = null
@@ -616,6 +763,8 @@ class PlayerViewModel @Inject constructor(
             song?.copy(isFavorite = favorites.contains(songId))
         }.distinctUntilChanged()
     }
+
+
 
     private fun updateDailyMix() {
         // Delegate to DailyMixStateHolder
@@ -963,8 +1112,10 @@ class PlayerViewModel @Inject constructor(
         mediaControllerFuture.addListener({
             try {
                 mediaController = mediaControllerFuture.get()
+                mediaController?.addListener(mediaControllerListener)
                 // Pass controller to PlaybackStateHolder
                 playbackStateHolder.setMediaController(mediaController)
+
 
                 setupMediaControllerListeners()
                 flushPendingRepeatMode()
@@ -1131,6 +1282,11 @@ class PlayerViewModel @Inject constructor(
                 _playerUiState.update { it.copy(currentFavoriteSortOption = sort) }
             }
         }
+        viewModelScope.launch {
+            libraryStateHolder.currentStorageFilter.collect { filter ->
+                _playerUiState.update { it.copy(currentStorageFilter = filter) }
+            }
+        }
 
 
         castTransferStateHolder.initialize(
@@ -1238,6 +1394,20 @@ class PlayerViewModel @Inject constructor(
     fun loadAlbumsIfNeeded() = libraryStateHolder.loadAlbumsIfNeeded()
     fun loadArtistsIfNeeded() = libraryStateHolder.loadArtistsIfNeeded()
     fun loadFoldersFromRepository() = libraryStateHolder.loadFoldersFromRepository()
+
+    fun setStorageFilter(filter: com.theveloper.pixelplay.data.model.StorageFilter) {
+        libraryStateHolder.setStorageFilter(filter)
+    }
+
+    fun toggleStorageFilter() {
+        val current = _playerUiState.value.currentStorageFilter
+        val next = when (current) {
+            com.theveloper.pixelplay.data.model.StorageFilter.ALL -> com.theveloper.pixelplay.data.model.StorageFilter.ONLINE
+            com.theveloper.pixelplay.data.model.StorageFilter.ONLINE -> com.theveloper.pixelplay.data.model.StorageFilter.OFFLINE
+            com.theveloper.pixelplay.data.model.StorageFilter.OFFLINE -> com.theveloper.pixelplay.data.model.StorageFilter.ALL
+        }
+        setStorageFilter(next)
+    }
 
     fun showAndPlaySong(
         song: Song,
@@ -2211,7 +2381,7 @@ class PlayerViewModel @Inject constructor(
             putBoolean(MusicNotificationProvider.EXTRA_SHUFFLE_ENABLED, enabled)
         }
         controller.sendCustomCommand(
-            SessionCommand(MusicNotificationProvider.CUSTOM_COMMAND_SET_SHUFFLE_STATE, Bundle.EMPTY),
+            SessionCommand(MusicNotificationProvider.CUSTOM_COMMAND_SET_SHUFFLE_STATE, Bundle()),
             args
         )
     }
@@ -3215,7 +3385,7 @@ class PlayerViewModel @Inject constructor(
 
     fun getSongUrisForGenre(genreId: String): Flow<List<String>> {
         return musicRepository.getMusicByGenre(genreId).map { songs ->
-            songs.take(4).mapNotNull { it.albumArtUriString }
+            songs.take(4).mapNotNull { it.albumArtUriString?.takeIf { uri -> uri.isNotBlank() } }
         }
     }
 
@@ -3513,6 +3683,33 @@ class PlayerViewModel @Inject constructor(
             resetAndLoadInitialData("Blocked directories changed")
         }
     }
+
+    fun playSong(song: Song) {
+        viewModelScope.launch {
+             val controller = mediaController ?: return@launch
+             
+             val mediaItem = MediaItem.Builder()
+                 .setMediaId(song.id)
+                 .setUri(Uri.parse(song.contentUriString ?: song.path))
+                 .setMediaMetadata(
+                     MediaMetadata.Builder()
+                         .setTitle(song.title)
+                         .setArtist(song.displayArtist)
+                         .setArtworkUri(if (song.albumArtUriString != null) Uri.parse(song.albumArtUriString) else null)
+                         .build()
+                 )
+                 .build()
+                 
+             controller.setMediaItem(mediaItem)
+             controller.prepare()
+             controller.play()
+             
+             // Also ensure sheet is visible
+             _isSheetVisible.value = true
+             _sheetState.value = PlayerSheetState.EXPANDED
+        }
+    }
+
     fun batchEditGenre(songs: List<Song>, newGenre: String) {
         if (songs.isEmpty()) return
 
@@ -3530,7 +3727,7 @@ class PlayerViewModel @Inject constructor(
                     newArtist = song.artist,
                     newAlbum = song.album,
                     newGenre = newGenre,
-                    newLyrics = song.lyrics ?: "",
+                    newLyrics = (song.lyrics ?: ""), // Ensure lyrics are string
                     newTrackNumber = song.trackNumber,
                     coverArtUpdate = null
                 )
@@ -3565,6 +3762,7 @@ class PlayerViewModel @Inject constructor(
             }
         }
     }
+
     // Custom Genres Names
     val customGenres: StateFlow<Set<String>> = userPreferencesRepository.customGenresFlow
         .stateIn(

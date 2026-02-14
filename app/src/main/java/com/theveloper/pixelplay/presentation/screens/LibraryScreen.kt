@@ -733,7 +733,10 @@ fun LibraryScreen(
                                     folderRootLabel = playerUiState.folderSource.displayName,
                                     onFolderClick = { playerViewModel.navigateToFolder(it) },
                                     onNavigateBack = { playerViewModel.navigateBackFolder() },
-                                    isShuffleEnabled = stablePlayerState.isShuffleEnabled
+                                    isShuffleEnabled = stablePlayerState.isShuffleEnabled,
+                                    showStorageFilterButton = currentTabId == LibraryTabId.SONGS || currentTabId == LibraryTabId.ALBUMS,
+                                    currentStorageFilter = playerUiState.currentStorageFilter,
+                                    onStorageFilterClick = { playerViewModel.toggleStorageFilter() }
                                 )
                             }
                         }
@@ -1159,6 +1162,15 @@ fun LibraryScreen(
         visible = showCreatePlaylistDialog,
         allSongs = allSongs,
         onDismiss = { showCreatePlaylistDialog = false },
+        onGenerateClick = {
+            showCreatePlaylistDialog = false
+            if (hasGeminiApiKey) {
+                playerViewModel.clearAiPlaylistError()
+                showCreateAiPlaylistDialog = true
+            } else {
+                Toast.makeText(context, "Set your Gemini API key first", Toast.LENGTH_SHORT).show()
+            }
+        },
         onCreate = { name, imageUri, color, icon, songIds, cropScale, cropPanX, cropPanY, shapeType, d1, d2, d3, d4 ->
             playlistViewModel.createPlaylist(
                 name = name,

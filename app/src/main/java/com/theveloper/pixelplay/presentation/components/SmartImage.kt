@@ -54,6 +54,7 @@ fun SmartImage(
     targetSize: Size = Size(300, 300),
     colorFilter: ColorFilter? = null,
     alpha: Float = 1f,
+    placeholderModel: Any? = null,
     onState: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -141,6 +142,26 @@ fun SmartImage(
                         contentScale = contentScale,
                         colorFilter = colorFilter,
                         alpha = alpha
+                    )
+                } else if (placeholderModel != null) {
+                    // Render placeholder model (e.g. low-res thumbnail)
+                     SubcomposeAsyncImage(
+                        model = placeholderModel,
+                        contentDescription = null, // Decorative placeholder
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = contentScale,
+                        colorFilter = colorFilter,
+                        alpha = alpha,
+                        error = {
+                            Placeholder(
+                                modifier = Modifier.fillMaxSize(),
+                                drawableResId = placeholderResId,
+                                contentDescription = contentDescription,
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                alpha = alpha
+                            )
+                        }
                     )
                 } else {
                     Placeholder(

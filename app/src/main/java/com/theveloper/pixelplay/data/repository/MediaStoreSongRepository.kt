@@ -352,8 +352,7 @@ class MediaStoreSongRepository @Inject constructor(
         maxSize = 250
     )
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    override fun getPaginatedSongs(sortOption: com.theveloper.pixelplay.data.model.SortOption): Flow<PagingData<Song>> {
+    override fun getPaginatedSongs(sortOption: com.theveloper.pixelplay.data.model.SortOption, storageFilter: com.theveloper.pixelplay.data.model.StorageFilter): Flow<PagingData<Song>> {
         return combine(
             userPreferencesRepository.allowedDirectoriesFlow,
             userPreferencesRepository.blockedDirectoriesFlow
@@ -370,7 +369,8 @@ class MediaStoreSongRepository @Inject constructor(
                             musicDao.getSongsPaginated(
                                 allowedParentDirs = allowedParentDirs,
                                 applyDirectoryFilter = applyDirectoryFilter,
-                                sortOrder = sortOption.storageKey
+                                sortOrder = sortOption.storageKey,
+                                filterMode = storageFilter.value
                             )
                         }
                     ).flow

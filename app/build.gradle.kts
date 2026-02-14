@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.android)
     alias(libs.plugins.baselineprofile)
     // id("com.google.protobuf") version "0.9.5" // Eliminado plugin de Protobuf
+    id("kotlin-parcelize")
 }
 
 android {
@@ -91,6 +92,7 @@ android {
     }
 
     testOptions {
+        unitTests.isReturnDefaultValues = true
         unitTests.all {
             it.useJUnitPlatform()
         }
@@ -116,6 +118,9 @@ dependencies {
     implementation(libs.play.services.cast.framework)
     implementation(libs.androidx.navigation.runtime.ktx)
     implementation(libs.androidx.compose.material3)
+    testImplementation(libs.junit.jupiter.api)
+    testImplementation(libs.junit.jupiter.params)
+    testRuntimeOnly(libs.junit.jupiter.engine)
     testImplementation(libs.junit)
     testImplementation(libs.junit.jupiter.api)
     testRuntimeOnly(libs.junit.jupiter.engine)
@@ -175,7 +180,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
 
     //Duktape
-    implementation(libs.duktape.android)
+    // implementation(libs.duktape.android)
 
     //Smooth corners shape
     implementation(libs.smooth.corner.rect.android.compose)
@@ -299,5 +304,11 @@ dependencies {
     implementation(libs.androidx.app)
     implementation(libs.androidx.app.projected)
 
+    // Telegram TDLib
+    implementation(libs.tdlib)
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }
 

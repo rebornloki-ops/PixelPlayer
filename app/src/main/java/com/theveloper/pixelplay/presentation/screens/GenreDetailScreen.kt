@@ -710,6 +710,7 @@ fun LazyListScope.ArtistSection(
 
         AlbumSectionItems(
             album = album,
+            keyPrefix = section.id, // Pass section ID (includes artist name)
             onSongClick = onSongClick,
             stablePlayerState = stablePlayerState,
             onMoreOptionsClick = onMoreOptionsClick,
@@ -727,6 +728,7 @@ fun LazyListScope.AlbumSection(
 ) {
     AlbumSectionItems(
         album = section.album,
+        keyPrefix = section.id, // Pass section ID (unique for album view)
         onSongClick = onSongClick,
         stablePlayerState = stablePlayerState,
         onMoreOptionsClick = onMoreOptionsClick,
@@ -737,13 +739,14 @@ fun LazyListScope.AlbumSection(
 
 fun LazyListScope.AlbumSectionItems(
     album: AlbumData,
+    keyPrefix: String, // Added prefix for uniqueness
     onSongClick: (Song) -> Unit,
     stablePlayerState: StablePlayerState,
     onMoreOptionsClick: (Song) -> Unit,
     isLastAlbumInSection: Boolean,
     useArtistStyle: Boolean
 ) {
-    item(key = "album_header_${album.name}") {
+    item(key = "${keyPrefix}_album_header_${album.name}") {
         val containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f)
         val shape = if (useArtistStyle) {
             RectangleShape
@@ -806,7 +809,7 @@ fun LazyListScope.AlbumSectionItems(
     }
     
     // Spacing Item
-    item(key = "album_spacer_${album.name}") {
+    item(key = "${keyPrefix}_album_spacer_${album.name}") {
          Box(
             modifier = Modifier
                 .fillMaxWidth()

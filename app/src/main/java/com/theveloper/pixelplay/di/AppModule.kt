@@ -59,6 +59,15 @@ object AppModule {
         return app as PixelPlayApplication
     }
 
+    @Singleton
+    @Provides
+    fun provideSessionToken(@ApplicationContext context: Context): androidx.media3.session.SessionToken {
+        return androidx.media3.session.SessionToken(
+            context,
+            android.content.ComponentName(context, com.theveloper.pixelplay.data.service.MusicService::class.java)
+        )
+    }
+
     @Provides
     @Singleton
     fun providePreferencesDataStore(
@@ -91,8 +100,13 @@ object AppModule {
             PixelPlayDatabase.MIGRATION_11_12,
             PixelPlayDatabase.MIGRATION_12_13,
             PixelPlayDatabase.MIGRATION_13_14,
-            PixelPlayDatabase.MIGRATION_14_15
-        ).fallbackToDestructiveMigration(dropAllTables = true)
+            PixelPlayDatabase.MIGRATION_14_15,
+            PixelPlayDatabase.MIGRATION_15_16,
+            PixelPlayDatabase.MIGRATION_16_17,
+            PixelPlayDatabase.MIGRATION_17_18,
+            PixelPlayDatabase.MIGRATION_18_19
+        )
+            .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
     }
 
@@ -193,6 +207,12 @@ object AppModule {
         )
     }
 
+    @Singleton
+    @Provides
+    fun provideTelegramDao(database: PixelPlayDatabase): com.theveloper.pixelplay.data.database.TelegramDao {
+        return database.telegramDao()
+    }
+
     @Provides
     @Singleton
     fun provideFolderTreeBuilder(): FolderTreeBuilder {
@@ -207,6 +227,9 @@ object AppModule {
         searchHistoryDao: SearchHistoryDao,
         musicDao: MusicDao,
         lyricsRepository: LyricsRepository,
+        telegramDao: com.theveloper.pixelplay.data.database.TelegramDao,
+        telegramCacheManager: com.theveloper.pixelplay.data.telegram.TelegramCacheManager,
+        telegramRepository: com.theveloper.pixelplay.data.telegram.TelegramRepository,
         songRepository: SongRepository,
         favoritesDao: FavoritesDao,
         artistImageRepository: ArtistImageRepository,
@@ -218,11 +241,15 @@ object AppModule {
             searchHistoryDao = searchHistoryDao,
             musicDao = musicDao,
             lyricsRepository = lyricsRepository,
+            telegramDao = telegramDao,
+            telegramCacheManager = telegramCacheManager,
+            telegramRepository = telegramRepository,
             songRepository = songRepository,
             favoritesDao = favoritesDao,
             artistImageRepository = artistImageRepository,
             folderTreeBuilder = folderTreeBuilder
         )
+
     }
 
     @Provides
@@ -235,8 +262,12 @@ object AppModule {
 
     @Singleton
     @Provides
-    fun provideSongMetadataEditor(@ApplicationContext context: Context, musicDao: MusicDao): SongMetadataEditor {
-        return SongMetadataEditor(context, musicDao)
+    fun provideSongMetadataEditor(
+        @ApplicationContext context: Context,
+        musicDao: MusicDao,
+        telegramDao: com.theveloper.pixelplay.data.database.TelegramDao
+    ): SongMetadataEditor {
+        return SongMetadataEditor(context, musicDao, telegramDao)
     }
 
     /**

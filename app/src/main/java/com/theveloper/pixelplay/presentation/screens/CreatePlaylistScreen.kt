@@ -46,6 +46,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
@@ -125,6 +126,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ButtonDefaults
@@ -150,6 +152,7 @@ fun CreatePlaylistDialog(
     visible: Boolean,
     allSongs: List<Song>,
     onDismiss: () -> Unit,
+    onGenerateClick: () -> Unit,
     onCreate: (String, String?, Int?, String?, List<String>, Float, Float, Float, String?, Float?, Float?, Float?, Float?) -> Unit // ... d4
 ) {
     val transitionState = remember { MutableTransitionState(false) }
@@ -172,6 +175,7 @@ fun CreatePlaylistDialog(
                 CreatePlaylistContent(
                     allSongs = allSongs,
                     onDismiss = onDismiss,
+                    onGenerateClick = onGenerateClick,
                     onCreate = onCreate
                 )
             }
@@ -235,6 +239,7 @@ fun EditPlaylistDialog(
 private fun CreatePlaylistContent(
     allSongs: List<Song>,
     onDismiss: () -> Unit,
+    onGenerateClick: () -> Unit,
     onCreate: (String, String?, Int?, String?, List<String>, Float, Float, Float, String?, Float?, Float?, Float?, Float?) -> Unit
 ) {
     val context = LocalContext.current
@@ -455,7 +460,8 @@ private fun CreatePlaylistContent(
                      starRotation = starRotation,
                      onStarRotationChange = { starRotation = it },
                      starScale = starScale,
-                     onStarScaleChange = { starScale = it }
+                     onStarScaleChange = { starScale = it },
+                     onGenerateClick = onGenerateClick
                  )
             } else {
                  val filteredSongs = remember(searchQuery, allSongs) {
@@ -761,6 +767,7 @@ private fun PlaylistFormContent(
     onStarRotationChange: (Float) -> Unit,
     starScale: Float,
     onStarScaleChange: (Float) -> Unit,
+    onGenerateClick: (() -> Unit)? = null
 ) {
     if (showCropUi && imageBitmap != null) {
          // Fullscreen Crop UI overrides normal content
@@ -981,6 +988,31 @@ private fun PlaylistFormContent(
                     unfocusedBorderColor = Color.Transparent
                 )
             )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // AI Generation Button - only show in Create mode (not Edit mode)
+            if (onGenerateClick != null) {
+                androidx.compose.material3.FilledTonalButton(
+                    onClick = onGenerateClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AutoAwesome, // Use built-in icon
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Generate with AI", fontWeight = FontWeight.SemiBold)
+                }
+            }
 
             val tabs = listOf("Default", "Image", "Icon")
             ExpressiveButtonGroup(
@@ -1196,7 +1228,7 @@ fun getIconByName(name: String?): ImageVector? {
         "Speaker" -> Icons.Rounded.Speaker
         "Favorite" -> Icons.Rounded.Favorite
         "Piano" -> Icons.Rounded.Piano
-        "Queue" -> Icons.Rounded.QueueMusic
+        "Queue" -> Icons.AutoMirrored.Rounded.QueueMusic
         else -> null
     }
 }
