@@ -64,6 +64,13 @@
             android:theme="@style/Theme.PixelPlay" />
 
         <activity
+            android:name=".presentation.netease.auth.NeteaseLoginActivity"
+            android:exported="false"
+            android:label="Netease Login"
+            android:theme="@style/Theme.PixelPlay" />
+
+
+        <activity
             android:name=".ExternalPlayerActivity"
             android:exported="true"
             android:label="@string/app_name"

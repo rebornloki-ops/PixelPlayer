@@ -9,6 +9,7 @@ import com.theveloper.pixelplay.data.model.SearchHistoryItem
 import com.theveloper.pixelplay.data.model.SearchResultItem
 import com.theveloper.pixelplay.data.model.Song
 import com.theveloper.pixelplay.data.model.SortOption
+import com.theveloper.pixelplay.data.model.StorageFilter
 import com.theveloper.pixelplay.data.preferences.UserPreferencesRepository
 import com.theveloper.pixelplay.data.repository.MusicRepository
 import io.mockk.*
@@ -63,6 +64,7 @@ class PlayerViewModelTest {
     private val mockDualPlayerEngine: DualPlayerEngine = mockk(relaxed = true)
     private val mockAppShortcutManager: AppShortcutManager = mockk(relaxed = true)
     private val mockTelegramCacheManager: TelegramCacheManager = mockk(relaxed = true)
+    private val mockTelegramRepository: com.theveloper.pixelplay.data.telegram.TelegramRepository = mockk(relaxed = true)
     private val mockListeningStatsTracker: ListeningStatsTracker = mockk(relaxed = true)
     private val mockDailyMixStateHolder: DailyMixStateHolder = mockk(relaxed = true)
     private val mockLyricsStateHolder: LyricsStateHolder = mockk(relaxed = true)
@@ -133,6 +135,7 @@ class PlayerViewModelTest {
         every { mockLibraryStateHolder.currentArtistSortOption } returns MutableStateFlow<SortOption>(SortOption.ArtistNameAZ)
         every { mockLibraryStateHolder.currentFolderSortOption } returns MutableStateFlow<SortOption>(SortOption.FolderNameAZ)
         every { mockLibraryStateHolder.currentFavoriteSortOption } returns MutableStateFlow<SortOption>(SortOption.LikedSongTitleAZ)
+        every { mockLibraryStateHolder.currentStorageFilter } returns MutableStateFlow(StorageFilter.ALL)
 
         every { mockSearchStateHolder.searchHistory } returns _searchHistoryFlow
         every { mockSearchStateHolder.searchResults } returns _searchResultsFlow
@@ -155,6 +158,7 @@ class PlayerViewModelTest {
 
         // Connectivity mocks removed as properties differ from expectations
         every { mockConnectivityStateHolder.initialize() } just runs
+        every { mockConnectivityStateHolder.offlinePlaybackBlocked } returns MutableSharedFlow()
 
         val stablePlayerState = MutableStateFlow(StablePlayerState(currentSong = null))
         every { mockPlaybackStateHolder.stablePlayerState } returns stablePlayerState
@@ -162,12 +166,14 @@ class PlayerViewModelTest {
 
         every { mockSleepTimerStateHolder.initialize(any(), any(), any(), any(), any()) } just runs // Added missing mock
         every { mockLibraryStateHolder.initialize(any()) } just runs // Added missing mock
-        every { mockCastTransferStateHolder.initialize(any(), any(), any(), any(), any(), any(), any(), any()) } just runs // Fixed: 8 args needed
+        every { mockCastTransferStateHolder.initialize(any(), any(), any(), any(), any(), any(), any(), any(), any()) } just runs
         
         // Mock MusicRepository Basic Returns
-        every { mockMusicRepository.getPaginatedSongs(any()) } returns flowOf(androidx.paging.PagingData.empty())
+        every { mockMusicRepository.getPaginatedSongs(any(), any()) } returns flowOf(androidx.paging.PagingData.empty())
         every { mockMusicRepository.getAudioFiles() } returns flowOf(emptyList())
         coEvery { mockMusicRepository.getFavoriteSongIdsOnce() } returns emptySet()
+        every { mockMusicRepository.telegramRepository } returns mockTelegramRepository
+        every { mockTelegramRepository.downloadCompleted } returns MutableSharedFlow<Int>()
         every { mockLyricsStateHolder.songUpdates } returns MutableSharedFlow()
 
         // Initialize PlayerViewModel

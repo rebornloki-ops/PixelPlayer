@@ -108,6 +108,21 @@ interface MusicDao {
     @Query("DELETE FROM song_artist_cross_ref WHERE song_id IN (:songIds)")
     suspend fun deleteCrossRefsBySongIds(songIds: List<Long>)
 
+    @Query("SELECT id FROM songs WHERE content_uri_string LIKE 'netease://%'")
+    suspend fun getAllNeteaseSongIds(): List<Long>
+
+    @Transaction
+    suspend fun clearAllNeteaseSongs() {
+        val neteaseSongIds = getAllNeteaseSongIds()
+        if (neteaseSongIds.isEmpty()) return
+        neteaseSongIds.chunked(CROSS_REF_BATCH_SIZE).forEach { chunk ->
+            deleteCrossRefsBySongIds(chunk)
+            deleteSongsByIds(chunk)
+        }
+        deleteOrphanedAlbums()
+        deleteOrphanedArtists()
+    }
+
     /**
      * Incrementally sync music data: upsert new/modified songs and remove deleted ones.
      * More efficient than clear-and-replace for large libraries with few changes.
@@ -237,7 +252,21 @@ interface MusicDao {
     @Query("""
         SELECT id FROM songs
         WHERE (:applyDirectoryFilter = 0 OR parent_directory_path IN (:allowedParentDirs))
-        AND (:filterMode = 0 OR (:filterMode = 1 AND telegram_file_id IS NULL) OR (:filterMode = 2 AND telegram_file_id IS NOT NULL))
+        AND (
+            :filterMode = 0
+            OR (
+                :filterMode = 1
+                AND content_uri_string NOT LIKE 'telegram://%'
+                AND content_uri_string NOT LIKE 'netease://%'
+            )
+            OR (
+                :filterMode = 2
+                AND (
+                    content_uri_string LIKE 'telegram://%'
+                    OR content_uri_string LIKE 'netease://%'
+                )
+            )
+        )
         ORDER BY
             CASE WHEN :sortOrder = 'song_default_order' THEN track_number END ASC,
             CASE WHEN :sortOrder = 'song_title_az' THEN title END ASC,
@@ -264,7 +293,21 @@ interface MusicDao {
     @Query("""
         SELECT * FROM songs
         WHERE (:applyDirectoryFilter = 0 OR parent_directory_path IN (:allowedParentDirs))
-        AND (:filterMode = 0 OR (:filterMode = 1 AND telegram_file_id IS NULL) OR (:filterMode = 2 AND telegram_file_id IS NOT NULL))
+        AND (
+            :filterMode = 0
+            OR (
+                :filterMode = 1
+                AND content_uri_string NOT LIKE 'telegram://%'
+                AND content_uri_string NOT LIKE 'netease://%'
+            )
+            OR (
+                :filterMode = 2
+                AND (
+                    content_uri_string LIKE 'telegram://%'
+                    OR content_uri_string LIKE 'netease://%'
+                )
+            )
+        )
         ORDER BY
             CASE WHEN :sortOrder = 'song_default_order' THEN track_number END ASC,
             CASE WHEN :sortOrder = 'song_title_az' THEN title END ASC,
@@ -388,7 +431,21 @@ interface MusicDao {
         SELECT DISTINCT albums.* FROM albums
         INNER JOIN songs ON albums.id = songs.album_id
         WHERE (:applyDirectoryFilter = 0 OR songs.id < 0 OR songs.parent_directory_path IN (:allowedParentDirs))
-        AND (:filterMode = 0 OR (:filterMode = 1 AND songs.telegram_file_id IS NULL) OR (:filterMode = 2 AND songs.telegram_file_id IS NOT NULL))
+        AND (
+            :filterMode = 0
+            OR (
+                :filterMode = 1
+                AND songs.content_uri_string NOT LIKE 'telegram://%'
+                AND songs.content_uri_string NOT LIKE 'netease://%'
+            )
+            OR (
+                :filterMode = 2
+                AND (
+                    songs.content_uri_string LIKE 'telegram://%'
+                    OR songs.content_uri_string LIKE 'netease://%'
+                )
+            )
+        )
         ORDER BY albums.title ASC
     """)
     fun getAlbums(

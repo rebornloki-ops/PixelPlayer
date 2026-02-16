@@ -90,6 +90,9 @@ fun SongEntity.toSong(): Song {
         telegramFileId = if (this.contentUriString.startsWith("telegram://")) {
             this.contentUriString.removePrefix("telegram://").split("/").getOrNull(1)?.toIntOrNull()
         } else null,
+        neteaseId = if (this.contentUriString.startsWith("netease://")) {
+            this.contentUriString.removePrefix("netease://").toLongOrNull()
+        } else null,
         mimeType = this.mimeType,
         bitrate = this.bitrate,
         sampleRate = this.sampleRate
@@ -135,6 +138,9 @@ fun SongEntity.toSongWithArtistRefs(artists: List<ArtistEntity>, crossRefs: List
         } else null,
         telegramFileId = if (this.contentUriString.startsWith("telegram://")) {
             this.contentUriString.removePrefix("telegram://").split("/").getOrNull(1)?.toIntOrNull()
+        } else null,
+        neteaseId = if (this.contentUriString.startsWith("netease://")) {
+            this.contentUriString.removePrefix("netease://").toLongOrNull()
         } else null,
         mimeType = this.mimeType,
         bitrate = this.bitrate,

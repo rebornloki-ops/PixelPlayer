@@ -487,6 +487,19 @@ fun AppNavigation(
                     )
                 }
             }
+            composable(
+                Screen.NeteaseDashboard.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) {
+                ScreenWrapper(navController = navController) {
+                    com.theveloper.pixelplay.presentation.netease.dashboard.NeteaseDashboardScreen(
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+            }
         }
     }
 }

@@ -17,6 +17,7 @@ import androidx.work.workDataOf
 import com.theveloper.pixelplay.data.database.AlbumEntity
 import com.theveloper.pixelplay.data.database.ArtistEntity
 import com.theveloper.pixelplay.data.database.MusicDao
+import com.theveloper.pixelplay.data.database.NeteaseDao
 import com.theveloper.pixelplay.data.database.SongArtistCrossRef
 import com.theveloper.pixelplay.data.database.SongEntity
 import com.theveloper.pixelplay.data.database.TelegramDao // Added
@@ -64,7 +65,8 @@ constructor(
         private val musicDao: MusicDao,
         private val userPreferencesRepository: UserPreferencesRepository,
         private val lyricsRepository: LyricsRepository,
-        private val telegramDao: TelegramDao
+        private val telegramDao: TelegramDao,
+        private val neteaseDao: NeteaseDao
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val contentResolver: ContentResolver = appContext.contentResolver
@@ -119,7 +121,10 @@ constructor(
                     // Detect and remove deleted songs efficiently using ID comparison
                     // We do this for INCREMENTAL and FULL modes. REBUILD clears everything anyway.
                     if (syncMode != SyncMode.REBUILD) {
-                        val localSongIds = musicDao.getAllSongIds().toHashSet()
+                        // Keep cloud songs (negative IDs) out of MediaStore deletion checks.
+                        val localSongIds = musicDao.getAllSongIds().asSequence()
+                            .filter { it > 0L }
+                            .toHashSet()
                         val mediaStoreIds = fetchMediaStoreIds(directoryResolver)
 
                         // Identify IDs that are in local DB but not in MediaStore
@@ -386,10 +391,11 @@ constructor(
                         val allSongIds = musicDao.getAllSongIds().toSet()
                         AlbumArtCacheManager.cleanOrphanedCacheFiles(applicationContext, allSongIds)
                         
-                        // Sync Telegram songs
+                        // Sync cloud songs (Telegram + Netease)
                         syncTelegramData()
+                        syncNeteaseData()
                         
-                        // Recalculate total after telegram sync
+                        // Recalculate total after cloud sync
                         val finalTotalSongs = musicDao.getSongCount().first()
 
                         Result.success(workDataOf(OUTPUT_TOTAL_SONGS to finalTotalSongs))
@@ -423,10 +429,11 @@ constructor(
                         val allSongIds = musicDao.getAllSongIds().toSet()
                         AlbumArtCacheManager.cleanOrphanedCacheFiles(applicationContext, allSongIds)
                         
-                        // Sync Telegram songs
+                        // Sync cloud songs (Telegram + Netease)
                         syncTelegramData()
+                        syncNeteaseData()
                         
-                        // Recalculate total after telegram sync
+                        // Recalculate total after cloud sync
                         val finalTotalSongs = musicDao.getSongCount().first()
 
                         Result.success(workDataOf(OUTPUT_TOTAL_SONGS to finalTotalSongs))
@@ -1292,6 +1299,11 @@ constructor(
         const val PROGRESS_TOTAL = "progress_total"
         const val PROGRESS_PHASE = "progress_phase"
         const val OUTPUT_TOTAL_SONGS = "output_total_songs"
+        private const val NETEASE_SONG_ID_OFFSET = 3_000_000_000_000L
+        private const val NETEASE_ALBUM_ID_OFFSET = 4_000_000_000_000L
+        private const val NETEASE_ARTIST_ID_OFFSET = 5_000_000_000_000L
+        private const val NETEASE_PARENT_DIRECTORY = "/Cloud/Netease"
+        private const val NETEASE_GENRE = "Netease Cloud"
         
         // Genre cache - shared across worker instances to avoid refetching on incremental syncs
         private const val GENRE_CACHE_TTL_MS = 60 * 60 * 1000L // 1 hour
@@ -1510,5 +1522,141 @@ constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync Telegram data", e)
         }
+    }
+
+    private suspend fun syncNeteaseData() {
+        Log.i(TAG, "Syncing Netease songs to main database (Unified Mode)...")
+        try {
+            val neteaseSongs = neteaseDao.getAllNeteaseSongsList()
+            val existingUnifiedNeteaseIds = musicDao.getAllNeteaseSongIds()
+
+            if (neteaseSongs.isEmpty()) {
+                if (existingUnifiedNeteaseIds.isNotEmpty()) {
+                    musicDao.clearAllNeteaseSongs()
+                }
+                Log.d(TAG, "No Netease songs to sync.")
+                return
+            }
+
+            val songsToInsert = ArrayList<SongEntity>(neteaseSongs.size)
+            val artistsToInsert = LinkedHashMap<Long, ArtistEntity>()
+            val albumsToInsert = LinkedHashMap<Long, AlbumEntity>()
+            val crossRefsToInsert = mutableListOf<SongArtistCrossRef>()
+
+            neteaseSongs.forEach { nSong ->
+                val songId = toUnifiedNeteaseSongId(nSong.neteaseId)
+                val artistNames = parseNeteaseArtistNames(nSong.artist)
+                val primaryArtistName = artistNames.firstOrNull() ?: "Unknown Artist"
+                val primaryArtistId = toUnifiedNeteaseArtistId(primaryArtistName)
+
+                artistNames.forEachIndexed { index, artistName ->
+                    val artistId = toUnifiedNeteaseArtistId(artistName)
+                    artistsToInsert.putIfAbsent(
+                        artistId,
+                        ArtistEntity(
+                            id = artistId,
+                            name = artistName,
+                            trackCount = 0,
+                            imageUrl = null
+                        )
+                    )
+                    crossRefsToInsert.add(
+                        SongArtistCrossRef(
+                            songId = songId,
+                            artistId = artistId,
+                            isPrimary = index == 0
+                        )
+                    )
+                }
+
+                val albumId = toUnifiedNeteaseAlbumId(nSong.albumId, nSong.album)
+                val albumName = nSong.album.ifBlank { "Unknown Album" }
+                albumsToInsert.putIfAbsent(
+                    albumId,
+                    AlbumEntity(
+                        id = albumId,
+                        title = albumName,
+                        artistName = primaryArtistName,
+                        artistId = primaryArtistId,
+                        songCount = 0,
+                        year = 0,
+                        albumArtUriString = nSong.albumArtUrl
+                    )
+                )
+
+                songsToInsert.add(
+                    SongEntity(
+                        id = songId,
+                        title = nSong.title,
+                        artistName = nSong.artist.ifBlank { primaryArtistName },
+                        artistId = primaryArtistId,
+                        albumArtist = null,
+                        albumName = albumName,
+                        albumId = albumId,
+                        contentUriString = "netease://${nSong.neteaseId}",
+                        albumArtUriString = nSong.albumArtUrl,
+                        duration = nSong.duration,
+                        genre = NETEASE_GENRE,
+                        filePath = "",
+                        parentDirectoryPath = NETEASE_PARENT_DIRECTORY,
+                        isFavorite = false,
+                        lyrics = null,
+                        trackNumber = 0,
+                        year = 0,
+                        dateAdded = nSong.dateAdded.takeIf { it > 0 } ?: System.currentTimeMillis(),
+                        mimeType = nSong.mimeType,
+                        bitrate = nSong.bitrate,
+                        sampleRate = null,
+                        telegramChatId = null,
+                        telegramFileId = null
+                    )
+                )
+            }
+
+            val albumCounts = songsToInsert.groupingBy { it.albumId }.eachCount()
+            val finalAlbums = albumsToInsert.values.map { album ->
+                album.copy(songCount = albumCounts[album.id] ?: 0)
+            }
+
+            val currentUnifiedSongIds = songsToInsert.map { it.id }.toSet()
+            val deletedUnifiedSongIds = existingUnifiedNeteaseIds.filter { it !in currentUnifiedSongIds }
+
+            musicDao.incrementalSyncMusicData(
+                songs = songsToInsert,
+                albums = finalAlbums,
+                artists = artistsToInsert.values.toList(),
+                crossRefs = crossRefsToInsert,
+                deletedSongIds = deletedUnifiedSongIds
+            )
+            Log.i(TAG, "Synced ${songsToInsert.size} Netease songs with Unified Metadata.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync Netease data", e)
+        }
+    }
+
+    private fun parseNeteaseArtistNames(rawArtist: String): List<String> {
+        if (rawArtist.isBlank()) return listOf("Unknown Artist")
+        val parsed = rawArtist.split(Regex("\\s*[,/&;+、]\\s*"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        return if (parsed.isEmpty()) listOf("Unknown Artist") else parsed
+    }
+
+    private fun toUnifiedNeteaseSongId(neteaseId: Long): Long {
+        return -(NETEASE_SONG_ID_OFFSET + neteaseId.absoluteValue)
+    }
+
+    private fun toUnifiedNeteaseAlbumId(albumId: Long, albumName: String): Long {
+        val normalized = if (albumId > 0L) {
+            albumId.absoluteValue
+        } else {
+            albumName.lowercase().hashCode().toLong().absoluteValue
+        }
+        return -(NETEASE_ALBUM_ID_OFFSET + normalized)
+    }
+
+    private fun toUnifiedNeteaseArtistId(artistName: String): Long {
+        return -(NETEASE_ARTIST_ID_OFFSET + artistName.lowercase().hashCode().toLong().absoluteValue)
     }
 }

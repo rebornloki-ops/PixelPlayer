@@ -23,6 +23,7 @@ import com.theveloper.pixelplay.data.preferences.UserPreferencesRepository
 import com.theveloper.pixelplay.data.preferences.dataStore
 import com.theveloper.pixelplay.data.media.SongMetadataEditor
 import com.theveloper.pixelplay.data.network.deezer.DeezerApiService
+import com.theveloper.pixelplay.data.network.netease.NeteaseApiService
 import com.theveloper.pixelplay.data.network.lyrics.LrcLibApiService
 import com.theveloper.pixelplay.data.repository.ArtistImageRepository
 import com.theveloper.pixelplay.data.repository.LyricsRepository
@@ -57,6 +58,12 @@ object AppModule {
     @Provides
     fun provideApplication(@ApplicationContext app: Context): PixelPlayApplication {
         return app as PixelPlayApplication
+    }
+
+    @Singleton
+    @Provides
+    fun provideGson(): com.google.gson.Gson {
+        return com.google.gson.Gson()
     }
 
     @Singleton
@@ -108,7 +115,8 @@ object AppModule {
             PixelPlayDatabase.MIGRATION_16_17,
             PixelPlayDatabase.MIGRATION_17_18,
             PixelPlayDatabase.MIGRATION_18_19,
-            PixelPlayDatabase.MIGRATION_19_20
+            PixelPlayDatabase.MIGRATION_19_20,
+            PixelPlayDatabase.MIGRATION_20_21
         )
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
@@ -215,6 +223,12 @@ object AppModule {
     @Provides
     fun provideTelegramDao(database: PixelPlayDatabase): com.theveloper.pixelplay.data.database.TelegramDao {
         return database.telegramDao()
+    }
+
+    @Singleton
+    @Provides
+    fun provideNeteaseDao(database: PixelPlayDatabase): com.theveloper.pixelplay.data.database.NeteaseDao {
+        return database.neteaseDao()
     }
 
     @Provides
@@ -449,3 +463,4 @@ object AppModule {
         return ArtistImageRepository(deezerApiService, musicDao)
     }
 }
+

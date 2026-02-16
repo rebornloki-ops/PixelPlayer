@@ -37,6 +37,7 @@ data class Song(
     val sampleRate: Int?,
     val telegramFileId: Int? = null, // ID of the file in Telegram
     val telegramChatId: Long? = null, // ID of the chat where the file is located
+    val neteaseId: Long? = null, // Netease Cloud Music song ID
 ) : Parcelable {
     private val defaultArtistDelimiters = listOf("/", ";", ",", "+", "&")
 
@@ -90,7 +91,8 @@ data class Song(
                 bitrate = 0,
                 sampleRate = 0,
                 telegramFileId = null,
-                telegramChatId = null
+                telegramChatId = null,
+                neteaseId = null
             )
         }
     }

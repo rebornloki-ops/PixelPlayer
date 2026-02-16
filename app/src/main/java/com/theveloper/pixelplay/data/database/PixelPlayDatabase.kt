@@ -18,9 +18,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TelegramChannelEntity::class,
         SongEngagementEntity::class,
         FavoritesEntity::class,
-        LyricsEntity::class
+        LyricsEntity::class,
+        NeteaseSongEntity::class,
+        NeteasePlaylistEntity::class
     ],
-    version = 20, // Incremented for Telegram table schema reconciliation
+    version = 21, // Incremented for Netease Cloud Music tables
 
     exportSchema = false
 )
@@ -32,7 +34,8 @@ abstract class PixelPlayDatabase : RoomDatabase() {
     abstract fun telegramDao(): TelegramDao
     abstract fun engagementDao(): EngagementDao
     abstract fun favoritesDao(): FavoritesDao
-    abstract fun lyricsDao(): LyricsDao // Added FavoritesDao
+    abstract fun lyricsDao(): LyricsDao
+    abstract fun neteaseDao(): NeteaseDao
 
     companion object {
         // Gap-bridging no-op migrations for missing version ranges.
@@ -356,6 +359,40 @@ abstract class PixelPlayDatabase : RoomDatabase() {
                         song_count INTEGER NOT NULL DEFAULT 0,
                         last_sync_time INTEGER NOT NULL DEFAULT 0,
                         photo_path TEXT
+                    )
+                """.trimIndent())
+            }
+        }
+
+        /**
+         * Add Netease Cloud Music tables.
+         */
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS netease_songs (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        netease_id INTEGER NOT NULL,
+                        playlist_id INTEGER NOT NULL,
+                        title TEXT NOT NULL,
+                        artist TEXT NOT NULL,
+                        album TEXT NOT NULL,
+                        album_id INTEGER NOT NULL,
+                        duration INTEGER NOT NULL,
+                        album_art_url TEXT,
+                        mime_type TEXT NOT NULL,
+                        bitrate INTEGER,
+                        date_added INTEGER NOT NULL
+                    )
+                """.trimIndent())
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS netease_playlists (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        cover_url TEXT,
+                        song_count INTEGER NOT NULL,
+                        last_sync_time INTEGER NOT NULL
                     )
                 """.trimIndent())
             }
