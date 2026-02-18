@@ -165,6 +165,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -909,9 +910,9 @@ fun QueueBottomSheet(
                         elevation = FloatingActionButtonDefaults.elevation(0.dp) // Opcional: para igualar elevación flat
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.Add,
+                            imageVector = Icons.Rounded.MoreHoriz,
                             contentDescription = "Queue actions",
-                            modifier = Modifier.rotate(fabRotation)
+                            //modifier = Modifier.rotate(fabRotation)
                         )
                     }
                 }

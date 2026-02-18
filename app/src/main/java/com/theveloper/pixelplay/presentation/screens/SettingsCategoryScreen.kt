@@ -144,6 +144,7 @@ import com.theveloper.pixelplay.data.preferences.NavBarStyle
 import com.theveloper.pixelplay.data.preferences.ThemePreference
 import com.theveloper.pixelplay.data.model.Song
 import com.theveloper.pixelplay.data.model.LyricsSourcePreference
+import com.theveloper.pixelplay.presentation.components.CollapsibleCommonTopBar
 import com.theveloper.pixelplay.presentation.components.ExpressiveTopBarContent
 import com.theveloper.pixelplay.presentation.components.FileExplorerDialog
 import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
@@ -357,7 +358,7 @@ fun SettingsCategoryScreen(
             state = lazyListState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                top = currentTopBarHeightDp,
+                top = currentTopBarHeightDp + 8.dp,
                 start = 16.dp,
                 end = 16.dp,
                 bottom = MiniPlayerHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
@@ -934,13 +935,11 @@ fun SettingsCategoryScreen(
             }
         }
 
-        SettingsTopBar(
+        CollapsibleCommonTopBar(
             collapseFraction = collapseFraction,
             headerHeight = currentTopBarHeightDp,
-            onBackPressed = onBackClick,
+            onBackClick = onBackClick,
             title = category.title,
-            expandedStartPadding = 20.dp,
-            collapsedStartPadding = 68.dp,
             maxLines = titleMaxLines
         )
 
