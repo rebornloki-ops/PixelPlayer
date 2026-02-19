@@ -70,7 +70,7 @@ private fun DailyMixCard(
     playerViewModel: PlayerViewModel
 ) {
     val headerSongs = songs.take(3).toImmutableList()
-    val songsToPlay = songs.take(4).toImmutableList()
+    val visibleSongs = songs.take(4).toImmutableList()
     val cornerRadius = 30.dp
     Card(
         shape = AbsoluteSmoothCornerShape(
@@ -89,7 +89,11 @@ private fun DailyMixCard(
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             DailyMixHeader(thumbnails = headerSongs)
-            DailyMixSongList(songs = songsToPlay, playerViewModel)
+            DailyMixSongList(
+                songs = visibleSongs,
+                playbackQueue = songs,
+                playerViewModel = playerViewModel
+            )
             ViewAllDailyMixButton(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -207,6 +211,7 @@ fun threeShapeSwitch(index: Int, thirdShapeCornerRadius: Dp = 16.dp): Shape { //
 @Composable
 private fun DailyMixSongList(
     songs: ImmutableList<Song>,
+    playbackQueue: ImmutableList<Song>,
     playerViewModel: PlayerViewModel
 ) {
     Column(
@@ -219,9 +224,9 @@ private fun DailyMixSongList(
                 playerViewModel = playerViewModel,
                 onClick = {
                     playerViewModel.playSongs(
-                        songsToPlay = songs,
+                        songsToPlay = playbackQueue,
                         startSong = song,
-                        queueName = "DailyMix"
+                        queueName = "Daily Mix"
                     )
                 },
                 modifier = Modifier.fillMaxWidth()

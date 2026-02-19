@@ -239,7 +239,7 @@ fun HomeScreen(
                 if (dailyMixSongs.isNotEmpty()) {
                     item(key = "daily_mix_section") {
                         DailyMixSection(
-                            songs = dailyMixSongs.take(4).toImmutableList(),
+                            songs = dailyMixSongs,
                             onClickOpen = {
                                 navController.navigate(Screen.DailyMixScreen.route)
                             },
