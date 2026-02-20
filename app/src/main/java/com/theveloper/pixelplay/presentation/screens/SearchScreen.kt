@@ -119,7 +119,7 @@ fun SearchScreen(
     navController: NavHostController,
     onSearchBarActiveChange: (Boolean) -> Unit = {}
 ) {
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf(playerViewModel.searchQuery) }
     var active by remember { mutableStateOf(false) }
     val systemNavBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val bottomBarHeightDp = NavBarContentHeight + systemNavBarInset
@@ -227,7 +227,10 @@ fun SearchScreen(
             ) {
                 SearchBar(
                     query = searchQuery,
-                    onQueryChange = { searchQuery = it },
+                    onQueryChange = {
+                        searchQuery = it
+                        playerViewModel.updateSearchQuery(it)
+                    },
                     onSearch = {
                         if (searchQuery.isNotBlank()) {
                             playerViewModel.onSearchQuerySubmitted(searchQuery)
@@ -943,15 +946,26 @@ fun SearchResultArtistItem(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                painter = painterResource(id = R.drawable.rounded_artist_24),
-                contentDescription = "Artist",
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape)
-                    .padding(12.dp),
-                tint = MaterialTheme.colorScheme.onTertiaryContainer
-            )
+            // Show artist image if available, fall back to icon
+            if (!artist.effectiveImageUrl.isNullOrBlank()) {
+                SmartImage(
+                    model = artist.effectiveImageUrl,
+                    contentDescription = "Artist: ${artist.name}",
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                )
+            } else {
+                Icon(
+                    painter = painterResource(id = R.drawable.rounded_artist_24),
+                    contentDescription = "Artist",
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape)
+                        .padding(12.dp),
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
