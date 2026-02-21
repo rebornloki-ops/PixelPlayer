@@ -47,6 +47,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -443,6 +444,19 @@ fun UnifiedPlayerSheet(
     val isQueueVisible = sheetOverlayState.isQueueVisible
     val bottomSheetOpenFraction = sheetOverlayState.bottomSheetOpenFraction
     val queueScrimAlpha = sheetOverlayState.queueScrimAlpha
+
+    LaunchedEffect(showQueueSheet) {
+        playerViewModel.updateQueueSheetVisibility(showQueueSheet)
+    }
+    LaunchedEffect(castSheetState.showCastSheet) {
+        playerViewModel.updateCastSheetVisibility(castSheetState.showCastSheet)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            playerViewModel.updateQueueSheetVisibility(false)
+            playerViewModel.updateCastSheetVisibility(false)
+        }
+    }
 
     val activePlayerSchemePair by playerViewModel.activePlayerColorSchemePair.collectAsState()
     val themedAlbumArtUri by playerViewModel.currentThemedAlbumArtUri.collectAsState()

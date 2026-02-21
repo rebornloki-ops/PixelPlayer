@@ -325,6 +325,10 @@ class PlayerViewModel @Inject constructor(
     val predictiveBackCollapseFraction: StateFlow<Float> = _predictiveBackCollapseFraction.asStateFlow()
     private val _predictiveBackSwipeEdge = MutableStateFlow<Int?>(null)
     val predictiveBackSwipeEdge: StateFlow<Int?> = _predictiveBackSwipeEdge.asStateFlow()
+    private val _isQueueSheetVisible = MutableStateFlow(false)
+    val isQueueSheetVisible: StateFlow<Boolean> = _isQueueSheetVisible.asStateFlow()
+    private val _isCastSheetVisible = MutableStateFlow(false)
+    val isCastSheetVisible: StateFlow<Boolean> = _isCastSheetVisible.asStateFlow()
 
     val playerContentExpansionFraction = Animatable(0f)
 
@@ -964,6 +968,14 @@ class PlayerViewModel @Inject constructor(
     fun resetPredictiveBackState() {
         _predictiveBackCollapseFraction.value = 0f
         _predictiveBackSwipeEdge.value = null
+    }
+
+    fun updateQueueSheetVisibility(visible: Boolean) {
+        _isQueueSheetVisible.value = visible
+    }
+
+    fun updateCastSheetVisibility(visible: Boolean) {
+        _isCastSheetVisible.value = visible
     }
 
     // Helper to resolve stored sort keys against the allowed group

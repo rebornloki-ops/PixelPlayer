@@ -43,6 +43,8 @@ fun ScreenWrapper(
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val playerSheetState by playerViewModel.sheetState.collectAsState()
+    val isQueueSheetVisible by playerViewModel.isQueueSheetVisible.collectAsState()
+    val isCastSheetVisible by playerViewModel.isCastSheetVisible.collectAsState()
     val scope = rememberCoroutineScope()
     
     // Lifecycle State
@@ -105,9 +107,11 @@ fun ScreenWrapper(
         content()
 
         val isPlayerExpanded = playerSheetState == PlayerSheetState.EXPANDED
+        val hasBlockingOverlay = isQueueSheetVisible || isCastSheetVisible
+        val canHandlePlayerBack = isPlayerExpanded && !hasBlockingOverlay
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            PredictiveBackHandler(enabled = isPlayerExpanded) { progressFlow ->
+            PredictiveBackHandler(enabled = canHandlePlayerBack) { progressFlow ->
                 try {
                     progressFlow.collect { backEvent ->
                         playerViewModel.updatePredictiveBackSwipeEdge(backEvent.swipeEdge)
@@ -144,7 +148,7 @@ fun ScreenWrapper(
             }
         }
 
-        BackHandler(enabled = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE && isPlayerExpanded) {
+        BackHandler(enabled = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE && canHandlePlayerBack) {
             playerViewModel.collapsePlayerSheet()
         }
         
