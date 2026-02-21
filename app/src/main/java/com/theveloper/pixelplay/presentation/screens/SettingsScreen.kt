@@ -359,28 +359,28 @@ fun ExpressiveCategoryItem(
                     text = category.subtitle,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                    maxLines = 2
                 )
             }
             
             Spacer(modifier = Modifier.width(8.dp))
             
-            // Chevron or indicator
-             Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            ) {
-                 Icon(
-                    imageVector = Icons.Rounded.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+//            // Chevron or indicator
+//             Box(
+//                contentAlignment = Alignment.Center,
+//                modifier = Modifier
+//                    .size(36.dp)
+//                    .clip(CircleShape)
+//                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+//            ) {
+//                 Icon(
+//                    imageVector = Icons.Rounded.ChevronRight,
+//                    contentDescription = null,
+//                    tint = MaterialTheme.colorScheme.onSurface,
+//                    modifier = Modifier.size(20.dp)
+//                )
+//            }
         }
     }
 }
