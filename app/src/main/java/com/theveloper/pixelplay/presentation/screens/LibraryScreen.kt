@@ -628,7 +628,7 @@ fun LibraryScreen(
                         }
                         val playerUiState by playerViewModel.playerUiState.collectAsState()
                         val playlistUiState by playlistViewModel.uiState.collectAsState()
-                        val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+                        val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
                         val favoritePagingItems = libraryViewModel.favoritesPagingFlow.collectAsLazyPagingItems()
 
                         val currentSelectedSortOption: SortOption? = when (currentTabId) {
@@ -890,7 +890,7 @@ fun LibraryScreen(
                                         val allSongsLazyPagingItems = libraryViewModel.songsPagingFlow.collectAsLazyPagingItems()
                                         // We can use libraryViewModel.isLoadingLibrary or similar if needed for global loading state
                                         val isLibraryLoading by libraryViewModel.isLoadingLibrary.collectAsState()
-                                        val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+                                        val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
                                         val playerUiState by playerViewModel.playerUiState.collectAsState()
 
                                         LibrarySongsTab(
@@ -1006,7 +1006,7 @@ fun LibraryScreen(
                                             val folders = playerUiState.musicFolders
                                             val currentFolder = playerUiState.currentFolder
                                             val isLoading = playerUiState.isLoadingLibraryCategories
-                                            val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+                                            val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
 
                                             LibraryFoldersTab(
                                                 folders = folders,
@@ -2088,7 +2088,7 @@ fun LibraryFavoritesTab(
     onRegisterLocateCurrentSongAction: ((() -> Unit)?) -> Unit = {},
     storageFilter: StorageFilter = StorageFilter.ALL
 ) {
-    val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+    val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val visibilityCallback by rememberUpdatedState(onLocateCurrentSongVisibilityChanged)
@@ -2669,7 +2669,7 @@ fun LibraryAlbumsTab(
                             }
                         }
                         // ScrollBar Overlay for List
-                        val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+                        val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
                         val bottomPadding = if (stablePlayerState.currentSong != null && stablePlayerState.currentSong != Song.emptySong())
                             bottomBarHeight + MiniPlayerHeight + 16.dp
                         else
@@ -2714,7 +2714,7 @@ fun LibraryAlbumsTab(
                         }
 
                         // ScrollBar Overlay for Grid
-                        val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+                        val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
                         val bottomPadding = if (stablePlayerState.currentSong != null && stablePlayerState.currentSong != Song.emptySong())
                             bottomBarHeight + MiniPlayerHeight + 16.dp
                         else
@@ -2980,7 +2980,7 @@ fun LibraryArtistsTab(
                     }
 
                     // ScrollBar Overlay
-                    val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+                    val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
                     val bottomPadding = if (stablePlayerState.currentSong != null && stablePlayerState.currentSong != Song.emptySong())
                         bottomBarHeight + MiniPlayerHeight + 16.dp
                     else

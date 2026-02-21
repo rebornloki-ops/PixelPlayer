@@ -69,7 +69,7 @@ fun ExternalPlayerOverlay(
     onDismiss: () -> Unit,
     onOpenFullPlayer: () -> Unit
 ) {
-    val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+    val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
     val playbackPosition by playerViewModel.currentPlaybackPosition.collectAsState()
     val remotePosition by playerViewModel.remotePosition.collectAsState()
     val isRemotePlaybackActive by playerViewModel.isRemotePlaybackActive.collectAsState()

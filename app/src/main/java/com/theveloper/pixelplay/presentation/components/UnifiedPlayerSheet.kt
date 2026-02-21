@@ -150,7 +150,7 @@ fun UnifiedPlayerSheet(
         }
     }
 
-    val infrequentPlayerStateReference = playerViewModel.stablePlayerStateInfrequent.collectAsState()
+    val infrequentPlayerStateReference = playerViewModel.stablePlayerState.collectAsState()
     val infrequentPlayerState = infrequentPlayerStateReference.value
 
     val currentPositionState = playerViewModel.currentPlaybackPosition.collectAsState()

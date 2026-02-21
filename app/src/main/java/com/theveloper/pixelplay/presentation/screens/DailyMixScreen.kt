@@ -108,7 +108,7 @@ fun DailyMixScreen(
     val systemNavBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val bottomBarHeightDp = NavBarContentHeight + systemNavBarInset
     var showPlaylistBottomSheet by remember { mutableStateOf(false) }
-    val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+    val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
     val favoriteSongIds by playerViewModel.favoriteSongIds.collectAsState()
 
     val showAiSheet by playerViewModel.showAiPlaylistSheet.collectAsState()

@@ -135,7 +135,7 @@ fun SearchScreen(
     val uiState by playerViewModel.playerUiState.collectAsState()
     val currentFilter by remember { derivedStateOf { uiState.selectedSearchFilter } }
     val genres by playerViewModel.genres.collectAsState()
-    val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+    val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
     val favoriteSongIds by playerViewModel.favoriteSongIds.collectAsState()
     var showSongInfoBottomSheet by remember { mutableStateOf(false) }
     var selectedSongForInfo by remember { mutableStateOf<Song?>(null) }
@@ -623,7 +623,7 @@ fun SearchResultsList(
     navController: NavHostController
 ) {
     val localDensity = LocalDensity.current
-    val playerStableState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+    val playerStableState by playerViewModel.stablePlayerState.collectAsState()
 
     if (results.isEmpty()) {
         Box(

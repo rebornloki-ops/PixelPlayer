@@ -222,7 +222,7 @@ fun PlaylistItems(
     filteredPlaylists: List<Playlist>,
     selectedPlaylists: SnapshotStateMap<String, Boolean>? = null
 ) {
-    val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+    val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
     val listState = rememberLazyListState()
 
     androidx.compose.runtime.LaunchedEffect(filteredPlaylists) {

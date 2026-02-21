@@ -158,7 +158,7 @@ fun CastBottomSheet(
     val isRemotePlaybackActive by playerViewModel.isRemotePlaybackActive.collectAsState()
     val isCastConnecting by playerViewModel.isCastConnecting.collectAsState()
     val trackVolume by playerViewModel.trackVolume.collectAsState()
-    val isPlaying = playerViewModel.stablePlayerStateInfrequent.collectAsState().value.isPlaying
+    val isPlaying = playerViewModel.stablePlayerState.collectAsState().value.isPlaying
     val context = LocalContext.current
 
     val requiredPermissions = remember {

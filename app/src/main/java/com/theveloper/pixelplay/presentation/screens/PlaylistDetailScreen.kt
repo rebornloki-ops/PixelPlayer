@@ -144,7 +144,7 @@ fun PlaylistDetailScreen(
     navController: NavController
 ) {
     val uiState by playlistViewModel.uiState.collectAsState()
-    val playerStableState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+    val playerStableState by playerViewModel.stablePlayerState.collectAsState()
     val context = LocalContext.current
     val currentPlaylist = uiState.currentPlaylistDetails
     val isFolderPlaylist = currentPlaylist?.id?.startsWith(FOLDER_PLAYLIST_PREFIX) == true

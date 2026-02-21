@@ -71,7 +71,7 @@ fun PaletteStyleSettingsScreen(
     onBackClick: () -> Unit
 ) {
     val uiState by settingsViewModel.uiState.collectAsState()
-    val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+    val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
     val isDarkTheme = LocalPixelPlayDarkTheme.current
     val albumSchemePair by playerViewModel.currentAlbumArtColorSchemePair.collectAsState()
 

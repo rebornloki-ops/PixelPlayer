@@ -10,7 +10,6 @@ data class StablePlayerState(
     val currentSong: Song? = null,
     val isPlaying: Boolean = false,
     val playWhenReady: Boolean = false,
-    val currentPosition: Long = 0L,
     val totalDuration: Long = 0L,
     val isShuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,

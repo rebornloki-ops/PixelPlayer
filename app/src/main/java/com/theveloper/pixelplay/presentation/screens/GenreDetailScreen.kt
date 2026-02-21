@@ -114,7 +114,7 @@ fun GenreDetailScreen(
     playlistViewModel: com.theveloper.pixelplay.presentation.viewmodel.PlaylistViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val stablePlayerState by playerViewModel.stablePlayerStateInfrequent.collectAsState()
+    val stablePlayerState by playerViewModel.stablePlayerState.collectAsState()
     val favoriteSongIds by playerViewModel.favoriteSongIds.collectAsState()
     val playlistUiState by playlistViewModel.uiState.collectAsState()
     val libraryGenres by playerViewModel.genres.collectAsState()
