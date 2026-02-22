@@ -307,6 +307,32 @@ interface MusicDao {
     ): Flow<List<SongEntity>>
 
     @Query("""
+        SELECT id, parent_directory_path, title FROM songs
+        WHERE (:applyDirectoryFilter = 0 OR id < 0 OR parent_directory_path IN (:allowedParentDirs))
+        AND (
+            :filterMode = 0
+            OR (
+                :filterMode = 1
+                AND content_uri_string NOT LIKE 'telegram://%'
+                AND content_uri_string NOT LIKE 'netease://%'
+            )
+            OR (
+                :filterMode = 2
+                AND (
+                    content_uri_string LIKE 'telegram://%'
+                    OR content_uri_string LIKE 'netease://%'
+                )
+            )
+        )
+        ORDER BY parent_directory_path ASC, title ASC
+    """)
+    fun getFolderSongs(
+        allowedParentDirs: List<String> = emptyList(),
+        applyDirectoryFilter: Boolean = false,
+        filterMode: Int
+    ): Flow<List<FolderSongRow>>
+
+    @Query("""
         SELECT id FROM songs
         WHERE (:applyDirectoryFilter = 0 OR parent_directory_path IN (:allowedParentDirs))
         AND (
@@ -714,6 +740,29 @@ interface MusicDao {
     // Example: Get all unique genre names
     @Query("SELECT DISTINCT genre FROM songs WHERE genre IS NOT NULL AND genre != '' ORDER BY genre ASC")
     fun getUniqueGenres(): Flow<List<String>>
+
+    @Query("""
+        SELECT DISTINCT genre FROM songs
+        WHERE genre IS NOT NULL AND genre != ''
+        AND (:applyDirectoryFilter = 0 OR id < 0 OR parent_directory_path IN (:allowedParentDirs))
+        ORDER BY genre ASC
+    """)
+    fun getUniqueGenres(
+        allowedParentDirs: List<String>,
+        applyDirectoryFilter: Boolean
+    ): Flow<List<String>>
+
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM songs
+            WHERE (:applyDirectoryFilter = 0 OR id < 0 OR parent_directory_path IN (:allowedParentDirs))
+            AND (genre IS NULL OR genre = '')
+        )
+    """)
+    fun hasUnknownGenre(
+        allowedParentDirs: List<String>,
+        applyDirectoryFilter: Boolean
+    ): Flow<Boolean>
 
     // --- Combined Queries (Potentially useful for more complex scenarios) ---
     // E.g., Get all album art URIs from songs (could be useful for theme preloading from SSoT)

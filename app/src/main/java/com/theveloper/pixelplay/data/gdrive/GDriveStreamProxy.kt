@@ -14,7 +14,11 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -45,6 +49,8 @@ class GDriveStreamProxy @Inject constructor(
 
     private var server: ApplicationEngine? = null
     private var actualPort: Int = 0
+    private val proxyScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var startJob: Job? = null
 
     fun isReady(): Boolean = actualPort > 0
 
@@ -73,7 +79,8 @@ class GDriveStreamProxy @Inject constructor(
     }
 
     fun start() {
-        CoroutineScope(Dispatchers.IO).launch {
+        startJob?.cancel()
+        startJob = proxyScope.launch {
             try {
                 val freePort = ServerSocket(0).use { it.localPort }
                 val createdServer = createServer(freePort)
@@ -81,6 +88,8 @@ class GDriveStreamProxy @Inject constructor(
                 server = createdServer
                 actualPort = freePort
                 Timber.d("GDriveStreamProxy started on port $actualPort")
+            } catch (e: CancellationException) {
+                Timber.d("GDriveStreamProxy start cancelled")
             } catch (e: Exception) {
                 Timber.e(e, "Failed to start GDriveStreamProxy")
             }
@@ -88,6 +97,9 @@ class GDriveStreamProxy @Inject constructor(
     }
 
     fun stop() {
+        startJob?.cancel()
+        startJob = null
+        proxyScope.coroutineContext.cancelChildren()
         server?.stop(1000, 2000)
         server = null
         actualPort = 0

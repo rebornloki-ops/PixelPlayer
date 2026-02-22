@@ -14,7 +14,11 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -50,6 +54,8 @@ class NeteaseStreamProxy @Inject constructor(
 
     private var server: ApplicationEngine? = null
     private var actualPort: Int = 0
+    private val proxyScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var startJob: Job? = null
 
     // Cache of resolved streaming URLs (they expire, so we track timestamp)
     private val urlCache = ConcurrentHashMap<Long, CachedUrl>()
@@ -104,7 +110,8 @@ class NeteaseStreamProxy @Inject constructor(
     }
 
     fun start() {
-        CoroutineScope(Dispatchers.IO).launch {
+        startJob?.cancel()
+        startJob = proxyScope.launch {
             try {
                 val freePort = ServerSocket(0).use { it.localPort }
                 val createdServer = createServer(freePort)
@@ -112,6 +119,8 @@ class NeteaseStreamProxy @Inject constructor(
                 server = createdServer
                 actualPort = freePort
                 Timber.d("NeteaseStreamProxy started on port $actualPort")
+            } catch (e: CancellationException) {
+                Timber.d("NeteaseStreamProxy start cancelled")
             } catch (e: Exception) {
                 Timber.e(e, "Failed to start NeteaseStreamProxy")
             }
@@ -119,6 +128,9 @@ class NeteaseStreamProxy @Inject constructor(
     }
 
     fun stop() {
+        startJob?.cancel()
+        startJob = null
+        proxyScope.coroutineContext.cancelChildren()
         server?.stop(1000, 2000)
         server = null
         actualPort = 0

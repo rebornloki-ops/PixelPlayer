@@ -72,6 +72,11 @@ fun ReorderTabsSheet(
     onDismiss: () -> Unit
 ) {
     var showResetDialog by remember { mutableStateOf(false) }
+    var localTabs by remember { mutableStateOf(tabs) }
+
+    LaunchedEffect(tabs) {
+        localTabs = tabs
+    }
 
     if (showResetDialog) {
         AlertDialog(
@@ -82,6 +87,7 @@ fun ReorderTabsSheet(
                 TextButton(
                     onClick = {
                         onReset()
+                        localTabs = tabs
                         showResetDialog = false
                     }
                 ) {
@@ -99,7 +105,6 @@ fun ReorderTabsSheet(
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var localTabs by remember { mutableStateOf(tabs) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val view = LocalView.current

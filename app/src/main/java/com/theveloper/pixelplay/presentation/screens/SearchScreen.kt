@@ -107,7 +107,7 @@ import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
 import com.theveloper.pixelplay.presentation.components.NavBarContentHeight
 import com.theveloper.pixelplay.presentation.components.PlaylistBottomSheet
 import com.theveloper.pixelplay.presentation.components.PlaylistCover
-import com.theveloper.pixelplay.presentation.navigation.Screen 
+import com.theveloper.pixelplay.presentation.navigation.Screen
 import com.theveloper.pixelplay.presentation.screens.search.components.GenreCategoriesGrid
 import com.theveloper.pixelplay.presentation.viewmodel.PlaylistViewModel
 import kotlinx.collections.immutable.toImmutableList
@@ -156,15 +156,9 @@ fun SearchScreen(
         }
     }
 
+    // Search debouncing is centralized in SearchStateHolder.
     LaunchedEffect(searchQuery, currentFilter) {
-        val normalizedQuery = searchQuery.trim()
-        if (normalizedQuery.isBlank()) {
-            playerViewModel.performSearch("")
-            return@LaunchedEffect
-        }
-
-        delay(180L)
-        playerViewModel.performSearch(normalizedQuery)
+        playerViewModel.performSearch(searchQuery)
     }
     val searchResults = uiState.searchResults
     val handleSongMoreOptionsClick: (Song) -> Unit = { song ->
@@ -584,7 +578,7 @@ fun EmptySearchResults(searchQuery: String, colorScheme: ColorScheme) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
-            imageVector = Icons.Rounded.Search, 
+            imageVector = Icons.Rounded.Search,
             contentDescription = "No results",
             modifier = Modifier
                 .size(80.dp)
@@ -1039,18 +1033,18 @@ fun SearchResultPlaylistItem(
 @Composable
 fun SearchFilterChip(
     filterType: SearchFilterType,
-    currentFilter: SearchFilterType, 
+    currentFilter: SearchFilterType,
     playerViewModel: PlayerViewModel,
     modifier: Modifier = Modifier
 ) {
     val selected = filterType == currentFilter
 
     FilterChip(
-        selected = selected, 
+        selected = selected,
         onClick = { playerViewModel.updateSearchFilter(filterType) },
         label = { Text(filterType.name.lowercase().replaceFirstChar { it.titlecase() }) },
         modifier = modifier,
-        shape = CircleShape, 
+        shape = CircleShape,
         border = BorderStroke(
             width = 0.dp,
             color = Color.Transparent

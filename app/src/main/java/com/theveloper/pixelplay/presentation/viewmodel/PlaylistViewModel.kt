@@ -239,7 +239,14 @@ class PlaylistViewModel @Inject constructor(
                     val folder = findFolder(folderPath, folders)
 
                     if (folder != null) {
-                        val songsList = folder.collectAllSongs()
+                        val songsList = withContext(Dispatchers.IO) {
+                            val rawSongs = folder.collectAllSongs()
+                            if (rawSongs.any { it.contentUriString.isBlank() }) {
+                                musicRepository.getSongsByIds(rawSongs.map { it.id }).first()
+                            } else {
+                                rawSongs
+                            }
+                        }
                         val pseudoPlaylist = Playlist(
                             id = playlistId,
                             name = folder.name,

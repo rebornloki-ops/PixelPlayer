@@ -1,13 +1,14 @@
 package com.theveloper.pixelplay.data.repository
 
+import android.content.Context
+import android.os.Environment
+import com.theveloper.pixelplay.data.database.FolderSongRow
 import com.theveloper.pixelplay.data.model.FolderSource
 import com.theveloper.pixelplay.data.model.MusicFolder
 import com.theveloper.pixelplay.data.model.Song
 import com.theveloper.pixelplay.utils.DirectoryRuleResolver
 import com.theveloper.pixelplay.utils.StorageType
 import com.theveloper.pixelplay.utils.StorageUtils
-import android.content.Context
-import android.os.Environment
 import kotlinx.collections.immutable.toImmutableList
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,7 +17,7 @@ import javax.inject.Singleton
 class FolderTreeBuilder @Inject constructor() {
 
     fun buildFolderTree(
-        songs: List<Song>,
+        folderSongs: List<FolderSongRow>,
         allowedDirs: Set<String>,
         blockedDirs: Set<String>,
         isFolderFilterActive: Boolean,
@@ -28,12 +29,12 @@ class FolderTreeBuilder @Inject constructor() {
 
         // 2. Filter Songs based on Directory Rules
         val filteredSongs = if (isFolderFilterActive && blockedDirs.isNotEmpty()) {
-            songs.filter { song ->
-                val parentPath = getParentPath(song.path) ?: return@filter false
-                !resolver.isBlocked(parentPath)
+            folderSongs.filter { song ->
+                val normalizedParent = normalizePath(song.parentDirectoryPath)
+                normalizedParent.isNotBlank() && !resolver.isBlocked(normalizedParent)
             }
         } else {
-            songs
+            folderSongs
         }
 
         if (filteredSongs.isEmpty()) return emptyList()
@@ -59,7 +60,7 @@ class FolderTreeBuilder @Inject constructor() {
 
         // 4. Group Songs and Build Tree
         val songsToProcess = filteredSongs.filter { song ->
-             song.path.startsWith(normalizedSelectedRoot)
+            normalizePath(song.parentDirectoryPath).startsWith(normalizedSelectedRoot)
         }
 
         if (songsToProcess.isEmpty()) return emptyList()
@@ -68,12 +69,12 @@ class FolderTreeBuilder @Inject constructor() {
         val rootFolder = getOrCreateTempFolder(normalizedSelectedRoot, folderMap, getNameFromPath(normalizedSelectedRoot))
 
         for (song in songsToProcess) {
-            val songPath = song.path
-            val parentPath = getParentPath(songPath) ?: continue
-            
+            val parentPath = normalizePath(song.parentDirectoryPath)
+            if (parentPath.isBlank()) continue
+
             // Get or create the folder for this song
             val folder = getOrCreateTempFolder(parentPath, folderMap, getNameFromPath(parentPath))
-            folder.songs.add(song)
+            folder.songs.add(song.toFolderStubSong())
             
             // Ensure hierarchy
             var currentPath = parentPath
@@ -140,6 +141,30 @@ class FolderTreeBuilder @Inject constructor() {
     
     private fun normalizePath(path: String): String {
         return if (path.endsWith("/")) path.dropLast(1) else path
+    }
+
+    private fun FolderSongRow.toFolderStubSong(): Song {
+        val parentPath = normalizePath(parentDirectoryPath)
+        val syntheticPath = if (parentPath.isBlank()) title else "$parentPath/$title"
+        return Song(
+            id = id.toString(),
+            title = title,
+            artist = "",
+            artistId = -1L,
+            album = "",
+            albumId = -1L,
+            path = syntheticPath,
+            contentUriString = "",
+            albumArtUriString = null,
+            duration = 0L,
+            trackNumber = 0,
+            year = 0,
+            dateAdded = 0L,
+            dateModified = 0L,
+            mimeType = null,
+            bitrate = null,
+            sampleRate = null
+        )
     }
 
     private class TempFolder(

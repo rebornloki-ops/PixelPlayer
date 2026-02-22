@@ -15,7 +15,11 @@ import io.ktor.server.routing.routing
 import io.ktor.utils.io.writeFully
 import kotlin.math.min
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -29,6 +33,8 @@ class TelegramStreamProxy @Inject constructor(
     private val telegramRepository: TelegramRepository
 ) {
     private var server: ApplicationEngine? = null
+    private val proxyScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var startJob: Job? = null
 
     private fun createServer(port: Int): ApplicationEngine {
         return embeddedServer(CIO, host = "127.0.0.1", port = port) {
@@ -254,7 +260,8 @@ class TelegramStreamProxy @Inject constructor(
     private var actualPort: Int = 0
 
     fun start() {
-        CoroutineScope(Dispatchers.IO).launch {
+        startJob?.cancel()
+        startJob = proxyScope.launch {
             try {
                 // Pre-resolve a free port since CIO doesn't support port 0 with resolvedConnectors()
                 val freePort = ServerSocket(0).use { it.localPort }
@@ -263,10 +270,22 @@ class TelegramStreamProxy @Inject constructor(
                 server = createdServer
                 actualPort = freePort
                 LogUtils.d("StreamProxy", "Started on port $actualPort")
+            } catch (e: CancellationException) {
+                LogUtils.d("StreamProxy", "Start cancelled")
             } catch (e: Exception) {
                 LogUtils.e("StreamProxy", e, "Failed to start server")
             }
         }
+    }
+
+    fun stop() {
+        startJob?.cancel()
+        startJob = null
+        proxyScope.coroutineContext.cancelChildren()
+        server?.stop(1000, 2000)
+        server = null
+        actualPort = 0
+        LogUtils.d("StreamProxy", "Stopped")
     }
     
     fun getProxyUrl(fileId: Int, knownSize: Long = 0): String {
