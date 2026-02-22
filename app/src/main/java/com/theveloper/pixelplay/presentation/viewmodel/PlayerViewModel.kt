@@ -1543,9 +1543,13 @@ class PlayerViewModel @Inject constructor(
                     // Queue context changed: perform a single remote queue load.
                     remoteQueueLoadJob?.cancel()
                     remoteQueueLoadJob = viewModelScope.launch {
+                        val hydratedQueue = hydrateSongsIfNeeded(desiredQueue)
+                        if (hydratedQueue.isEmpty()) return@launch
+                        val hydratedStartSong =
+                            hydratedQueue.firstOrNull { it.id == song.id } ?: hydratedQueue.first()
                         val loaded = castTransferStateHolder.playRemoteQueue(
-                            songsToPlay = desiredQueue,
-                            startSong = song,
+                            songsToPlay = hydratedQueue,
+                            startSong = hydratedStartSong,
                             isShuffleEnabled = playbackStateHolder.stablePlayerState.value.isShuffleEnabled
                         )
                         if (!loaded) {
@@ -1592,6 +1596,20 @@ class PlayerViewModel @Inject constructor(
     private fun List<Song>.matchesSongOrder(contextSongs: List<Song>): Boolean {
         if (size != contextSongs.size) return false
         return indices.all { this[it].id == contextSongs[it].id }
+    }
+
+    private fun Song.requiresHydration(): Boolean {
+        return contentUriString.isBlank()
+    }
+
+    private suspend fun hydrateSongsIfNeeded(songs: List<Song>): List<Song> {
+        if (songs.isEmpty() || songs.none { it.requiresHydration() }) return songs
+        val hydratedSongs = musicRepository.getSongsByIds(songs.map { it.id }).first()
+        if (hydratedSongs.isEmpty()) return songs
+        val hydratedById = hydratedSongs.associateBy { it.id }
+        return songs.mapNotNull { original ->
+            hydratedById[original.id] ?: original.takeIf { !original.requiresHydration() }
+        }
     }
 
     fun playAlbum(album: Album) {
@@ -2260,10 +2278,7 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             transitionSchedulerJob?.cancel()
 
-            // Validate songs - filter out any with missing files (efficient: uses contentUri check)
-            // Validate songs - filter out any with missing files (efficient: uses contentUri check)
-            // Strict validation removed to prevent skipping valid songs that might fail openInputStream check
-            val validSongs = songsToPlay
+            val validSongs = hydrateSongsIfNeeded(songsToPlay)
 
             if (validSongs.isEmpty()) {
                 _toastEvents.emit(context.getString(R.string.no_valid_songs))
@@ -3206,33 +3221,34 @@ class PlayerViewModel @Inject constructor(
                     currentFolder = folder
                 )
             }
+            hydrateCurrentFolderSongsIfNeeded(path)
         }
     }
 
     fun navigateBackFolder() {
-        _playerUiState.update {
-            val currentFolder = it.currentFolder
-            if (currentFolder != null) {
-                val parentPath = File(currentFolder.path).parent
-                val sourceRoot = it.folderSourceRootPath.ifBlank {
-                    android.os.Environment.getExternalStorageDirectory().path
-                }
-                if (parentPath == null || parentPath == sourceRoot) {
-                    it.copy(
-                        currentFolderPath = null,
-                        currentFolder = null
-                    )
-                } else {
-                    val parentFolder = findFolder(parentPath, _playerUiState.value.musicFolders)
-                    it.copy(
-                        currentFolderPath = parentPath,
-                        currentFolder = parentFolder
-                    )
-                }
-            } else {
-                it
-            }
+        val state = _playerUiState.value
+        val currentFolder = state.currentFolder ?: return
+        val parentPath = File(currentFolder.path).parent
+        val sourceRoot = state.folderSourceRootPath.ifBlank {
+            android.os.Environment.getExternalStorageDirectory().path
         }
+        if (parentPath == null || parentPath == sourceRoot) {
+            _playerUiState.update {
+                it.copy(
+                    currentFolderPath = null,
+                    currentFolder = null
+                )
+            }
+            return
+        }
+        val parentFolder = findFolder(parentPath, state.musicFolders)
+        _playerUiState.update {
+            it.copy(
+                currentFolderPath = parentPath,
+                currentFolder = parentFolder
+            )
+        }
+        hydrateCurrentFolderSongsIfNeeded(parentPath)
     }
 
     private fun findFolder(path: String?, folders: List<MusicFolder>): MusicFolder? {
@@ -3248,6 +3264,23 @@ class PlayerViewModel @Inject constructor(
             queue.addAll(folder.subFolders)
         }
         return null
+    }
+
+    private fun hydrateCurrentFolderSongsIfNeeded(folderPath: String) {
+        viewModelScope.launch {
+            val currentFolder = _playerUiState.value.currentFolder ?: return@launch
+            if (currentFolder.path != folderPath || currentFolder.songs.isEmpty()) return@launch
+            val currentSongs = currentFolder.songs
+            if (currentSongs.none { it.requiresHydration() }) return@launch
+            val hydratedSongs = hydrateSongsIfNeeded(currentSongs)
+            if (hydratedSongs.isEmpty()) return@launch
+            _playerUiState.update { state ->
+                if (state.currentFolder?.path != folderPath) return@update state
+                state.copy(
+                    currentFolder = state.currentFolder.copy(songs = hydratedSongs.toImmutableList())
+                )
+            }
+        }
     }
 
     private fun setFoldersPlaylistViewState(isPlaylistView: Boolean) {
@@ -3667,6 +3700,13 @@ class PlayerViewModel @Inject constructor(
 
     fun selectSongForInfo(song: Song) {
         _selectedSongForInfo.value = song
+        if (!song.requiresHydration()) return
+        viewModelScope.launch {
+            val hydrated = musicRepository.getSongsByIds(listOf(song.id)).first().firstOrNull() ?: return@launch
+            if (_selectedSongForInfo.value?.id == song.id) {
+                _selectedSongForInfo.value = hydrated
+            }
+        }
     }
 
     private fun loadLyricsForCurrentSong() {
