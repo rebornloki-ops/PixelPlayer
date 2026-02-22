@@ -702,6 +702,21 @@ class MusicService : MediaSessionService() {
     }
 
     private fun refreshMediaSessionUi(session: MediaSession) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val player = session.player
+            val playbackState = player.playbackState
+            val isActivelyPlaying = player.playWhenReady &&
+                    playbackState != Player.STATE_IDLE &&
+                    playbackState != Player.STATE_ENDED
+            if (!isActivelyPlaying) {
+                Timber.tag(TAG).d(
+                    "Skipping media button preference update on API 31+ while inactive: " +
+                            "playWhenReady=${player.playWhenReady}, state=$playbackState"
+                )
+                return
+            }
+        }
+
         val buttons = buildMediaButtonPreferences(session)
         // setMediaButtonPreferences triggers a notification update internally via
         // MediaControllerListener.onMediaButtonPreferencesChanged → onUpdateNotificationInternal,
