@@ -211,7 +211,10 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 // Your Mix
-                item(key = "your_mix_header") {
+                item(
+                    key = "your_mix_header",
+                    contentType = "your_mix_header"
+                ) {
                     YourMixHeader(
                         song = yourMixSong,
                         isShuffleEnabled = isShuffleEnabled,
@@ -228,7 +231,10 @@ fun HomeScreen(
 
                 // Collage
                 if (yourMixSongs.isNotEmpty()) {
-                    item(key = "album_art_collage") {
+                    item(
+                        key = "album_art_collage",
+                        contentType = "album_art_collage"
+                    ) {
                         val basePattern = settingsUiState.collagePattern
                         val isAutoRotate = settingsUiState.collageAutoRotate
                         val patterns = remember { CollagePattern.entries }
@@ -258,7 +264,10 @@ fun HomeScreen(
 
                 // Daily Mix
                 if (dailyMixSongs.isNotEmpty()) {
-                    item(key = "daily_mix_section") {
+                    item(
+                        key = "daily_mix_section",
+                        contentType = "daily_mix_section"
+                    ) {
                         DailyMixSection(
                             songs = dailyMixSongs,
                             onClickOpen = {
@@ -270,7 +279,10 @@ fun HomeScreen(
                 }
 
                 if (recentlyPlayedSongs.size >= RecentlyPlayedSectionMinSongsToShow) {
-                    item(key = "recently_played_section") {
+                    item(
+                        key = "recently_played_section",
+                        contentType = "recently_played_section"
+                    ) {
                         RecentlyPlayedSection(
                             songs = recentlyPlayedSongs,
                             onSongClick = { song ->
@@ -291,7 +303,10 @@ fun HomeScreen(
                     }
                 }
 
-                item(key = "listening_stats_preview") {
+                item(
+                    key = "listening_stats_preview",
+                    contentType = "listening_stats_preview"
+                ) {
                     StatsOverviewCard(
                         summary = weeklyStats,
                         onClick = { navController.navigateSafely(Screen.Stats.route) }

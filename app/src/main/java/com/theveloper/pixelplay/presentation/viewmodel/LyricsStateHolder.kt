@@ -60,11 +60,17 @@ class LyricsStateHolder @Inject constructor(
     val searchUiState: StateFlow<LyricsSearchUiState> = _searchUiState.asStateFlow()
 
     // Event to notify ViewModel of song updates (e.g. lyrics added)
-    private val _songUpdates = kotlinx.coroutines.flow.MutableSharedFlow<Pair<Song, Lyrics?>>()
+    private val _songUpdates = kotlinx.coroutines.flow.MutableSharedFlow<Pair<Song, Lyrics?>>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
     val songUpdates = _songUpdates.asSharedFlow()
 
     // Event for Toasts
-    private val _messageEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>()
+    private val _messageEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
     val messageEvents = _messageEvents.asSharedFlow()
 
     /**

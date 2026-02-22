@@ -580,7 +580,7 @@ fun LibraryScreen(
 //                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = gradientColors[0]
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
                 )
             )
         }
@@ -608,7 +608,8 @@ fun LibraryScreen(
             Column(
                 modifier = Modifier
                     // .padding(innerScaffoldPadding) // El padding ya está en el Box contenedor
-                    .background(brush = Brush.verticalGradient(gradientColors))
+//                    .background(brush = Brush.verticalGradient(gradientColors))
+                    .background(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
                     .fillMaxSize()
             ) {
                 if (!isCompactNavigation) {
@@ -1902,7 +1903,11 @@ private fun LibraryTabSwitcherSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp)
             ) {
-                itemsIndexed(tabs, key = { index, tab -> "$tab-$index" }) { index, rawId ->
+                itemsIndexed(
+                    items = tabs,
+                    key = { index, tab -> "$tab-$index" },
+                    contentType = { _, _ -> "library_tab_item" }
+                ) { index, rawId ->
                     val tabId = rawId.toLibraryTabIdOrNull() ?: return@itemsIndexed
                     LibraryTabGridItem(
                         tabId = tabId,
@@ -1912,7 +1917,8 @@ private fun LibraryTabSwitcherSheet(
                 }
 
                 item(
-                    span = { GridItemSpan(maxLineSpan) }
+                    span = { GridItemSpan(maxLineSpan) },
+                    contentType = "reorder_tabs_action"
                 ) {
                     Box(
                         modifier = Modifier
@@ -2691,7 +2697,10 @@ fun LibrarySongsTabPaginated(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             contentPadding = PaddingValues(bottom = bottomBarHeight + MiniPlayerHeight + 30.dp)
                         ) {
-                            item(key = "songs_top_spacer") { Spacer(Modifier.height(0.dp)) }
+                            item(
+                                key = "songs_top_spacer",
+                                contentType = "songs_top_spacer"
+                            ) { Spacer(Modifier.height(0.dp)) }
 
                             items(
                                 count = paginatedSongs.itemCount,
@@ -2732,7 +2741,7 @@ fun LibrarySongsTabPaginated(
 
                             // Loading indicator for appending more items
                             if (paginatedSongs.loadState.append is LoadState.Loading) {
-                                item {
+                                item(contentType = "songs_append_loading") {
                                     Box(
                                         Modifier.fillMaxWidth().padding(vertical = 16.dp),
                                         contentAlignment = Alignment.Center

@@ -11,7 +11,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Indication
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -755,8 +754,10 @@ internal fun MiniPlayerContentInternal(
     val hapticFeedback = LocalHapticFeedback.current
     val controlsEnabled = !isCastConnecting && !isPreparingPlayback
 
-    val interaction = remember { MutableInteractionSource() }
-    val indication: Indication = ripple(bounded = false)
+    val previousInteraction = remember { MutableInteractionSource() }
+    val playPauseInteraction = remember { MutableInteractionSource() }
+    val nextInteraction = remember { MutableInteractionSource() }
+    val miniPlayerIndication = remember { ripple(bounded = false) }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -830,8 +831,8 @@ internal fun MiniPlayerContentInternal(
                 .clip(CircleShape)
                 .background(LocalMaterialTheme.current.onPrimary)
                 .clickable(
-                    interactionSource = interaction,
-                    indication = indication,
+                    interactionSource = previousInteraction,
+                    indication = miniPlayerIndication,
                     enabled = controlsEnabled
                 ) {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -855,8 +856,8 @@ internal fun MiniPlayerContentInternal(
                 .clip(CircleShape)
                 .background(LocalMaterialTheme.current.primary)
                 .clickable(
-                    interactionSource = interaction,
-                    indication = indication,
+                    interactionSource = playPauseInteraction,
+                    indication = miniPlayerIndication,
                     enabled = controlsEnabled
                 ) {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -880,8 +881,8 @@ internal fun MiniPlayerContentInternal(
                 .clip(CircleShape)
                 .background(LocalMaterialTheme.current.onPrimary)
                 .clickable(
-                    interactionSource = interaction,
-                    indication = indication,
+                    interactionSource = nextInteraction,
+                    indication = miniPlayerIndication,
                     enabled = controlsEnabled
                 ) { onNext() },
             contentAlignment = Alignment.Center

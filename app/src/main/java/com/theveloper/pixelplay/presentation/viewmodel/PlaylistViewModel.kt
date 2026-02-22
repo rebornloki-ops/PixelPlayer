@@ -78,7 +78,10 @@ class PlaylistViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(PlaylistUiState())
     val uiState: StateFlow<PlaylistUiState> = _uiState.asStateFlow()
 
-    private val _playlistCreationEvent = MutableSharedFlow<Boolean>()
+    private val _playlistCreationEvent = MutableSharedFlow<Boolean>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
     val playlistCreationEvent: SharedFlow<Boolean> = _playlistCreationEvent.asSharedFlow()
 
     companion object {

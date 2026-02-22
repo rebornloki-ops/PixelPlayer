@@ -161,8 +161,8 @@ object AlbumArtCacheManager {
      * @param context Application context
      * @return Total size of album art cache in bytes
      */
-    fun getCacheSizeBytes(context: Context): Long {
-        return getAlbumArtFiles(context.cacheDir).sumOf { it.length() }
+    suspend fun getCacheSizeBytes(context: Context): Long = withContext(Dispatchers.IO) {
+        getAlbumArtFiles(context.cacheDir).sumOf { it.length() }
     }
     
     /**
@@ -171,7 +171,7 @@ object AlbumArtCacheManager {
      * @param context Application context
      * @return Cache size as "X.X MB" string
      */
-    fun getCacheSizeFormatted(context: Context): String {
+    suspend fun getCacheSizeFormatted(context: Context): String {
         val bytes = getCacheSizeBytes(context)
         val mb = bytes.toDouble() / (1024 * 1024)
         return String.format("%.1f MB", mb)

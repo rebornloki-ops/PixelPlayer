@@ -84,6 +84,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -141,6 +142,13 @@ private data class SortOptionsSnapshot(
     val favoriteSort: SortOption,
 )
 
+private data class AiUiSnapshot(
+    val showAiPlaylistSheet: Boolean,
+    val isGeneratingAiPlaylist: Boolean,
+    val aiError: String?,
+    val isGeneratingAiMetadata: Boolean,
+)
+
 @UnstableApi
 @SuppressLint("LogNotTimber")
 @OptIn(coil.annotation.ExperimentalCoilApi::class)
@@ -179,7 +187,10 @@ class PlayerViewModel @Inject constructor(
     private val _playerUiState = MutableStateFlow(PlayerUiState())
     val playerUiState: StateFlow<PlayerUiState> = _playerUiState.asStateFlow()
     
-    private val _showNoInternetDialog = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+    private val _showNoInternetDialog = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val showNoInternetDialog: SharedFlow<Unit> = _showNoInternetDialog.asSharedFlow()
 
     val stablePlayerState: StateFlow<StablePlayerState> = playbackStateHolder.stablePlayerState
@@ -480,7 +491,10 @@ class PlayerViewModel @Inject constructor(
 
 
     // Toast Events
-    private val _toastEvents = MutableSharedFlow<String>()
+    private val _toastEvents = MutableSharedFlow<String>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val toastEvents = _toastEvents.asSharedFlow()
 
     private val _artistNavigationRequests = MutableSharedFlow<Long>(extraBufferCapacity = 1)
@@ -1297,17 +1311,21 @@ class PlayerViewModel @Inject constructor(
                 aiStateHolder.showAiPlaylistSheet,
                 aiStateHolder.isGeneratingAiPlaylist,
                 aiStateHolder.aiError,
-            ) { show, generating, error ->
-                Triple(show, generating, error)
-            }.collect { (show, generating, error) ->
-                _showAiPlaylistSheet.value = show
-                _isGeneratingAiPlaylist.value = generating
-                _aiError.value = error
-            }
-        }
-        viewModelScope.launch {
-            aiStateHolder.isGeneratingMetadata.collect { generating ->
-                _playerUiState.update { it.copy(isGeneratingAiMetadata = generating) }
+                aiStateHolder.isGeneratingMetadata,
+            ) { show, generating, error, generatingMetadata ->
+                AiUiSnapshot(
+                    showAiPlaylistSheet = show,
+                    isGeneratingAiPlaylist = generating,
+                    aiError = error,
+                    isGeneratingAiMetadata = generatingMetadata
+                )
+            }.collect { snapshot ->
+                _showAiPlaylistSheet.value = snapshot.showAiPlaylistSheet
+                _isGeneratingAiPlaylist.value = snapshot.isGeneratingAiPlaylist
+                _aiError.value = snapshot.aiError
+                _playerUiState.update {
+                    it.copy(isGeneratingAiMetadata = snapshot.isGeneratingAiMetadata)
+                }
             }
         }
 
@@ -1797,9 +1815,13 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private fun resolveSongFromMediaItem(mediaItem: MediaItem): Song? {
+    private fun resolveSongFromMediaItem(
+        mediaItem: MediaItem,
+        allSongsById: Map<String, Song>? = null
+    ): Song? {
         val resolvedSong =
-            libraryStateHolder.allSongs.value.find { it.id == mediaItem.mediaId }
+            allSongsById?.get(mediaItem.mediaId)
+                ?: libraryStateHolder.allSongs.value.find { it.id == mediaItem.mediaId }
                 ?: _playerUiState.value.currentPlaybackQueue.find { it.id == mediaItem.mediaId }
                 ?: mediaMapper.resolveSongFromMediaItem(mediaItem)
 
@@ -1831,10 +1853,11 @@ class PlayerViewModel @Inject constructor(
         }
 
         val queue = mutableListOf<Song>()
+        val allSongsById = libraryStateHolder.allSongs.value.associateBy(Song::id)
 
         for (i in 0 until count) {
             val mediaItem = currentMediaController.getMediaItemAt(i)
-            resolveSongFromMediaItem(mediaItem)?.let { queue.add(it) }
+            resolveSongFromMediaItem(mediaItem, allSongsById)?.let { queue.add(it) }
         }
 
         _playerUiState.update { it.copy(currentPlaybackQueue = queue.toImmutableList()) }
