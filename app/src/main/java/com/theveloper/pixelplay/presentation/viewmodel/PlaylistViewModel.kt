@@ -341,6 +341,7 @@ class PlaylistViewModel @Inject constructor(
         coverShapeDetail2: Float? = null,
         coverShapeDetail3: Float? = null,
         coverShapeDetail4: Float? = null,
+        source: String = "LOCAL" // Mark source
     ) {
         viewModelScope.launch {
             var savedCoverPath: String? = null
@@ -369,7 +370,8 @@ class PlaylistViewModel @Inject constructor(
                 coverShapeDetail1 = coverShapeDetail1,
                 coverShapeDetail2 = coverShapeDetail2,
                 coverShapeDetail3 = coverShapeDetail3,
-                coverShapeDetail4 = coverShapeDetail4
+                coverShapeDetail4 = coverShapeDetail4,
+                source = source // Set source
             )
             _playlistCreationEvent.emit(true)
         }
@@ -822,7 +824,8 @@ class PlaylistViewModel @Inject constructor(
                     userPreferencesRepository.createPlaylist(
                         name = playlistName,
                         songIds = selectedSongs.map { it.id },
-                        isAiGenerated = true
+                        isAiGenerated = true,
+                        source = "AI" // Mark as AI source
                     )
                     
                     _uiState.update { it.copy(isAiGenerating = false) }

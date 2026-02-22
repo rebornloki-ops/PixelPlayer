@@ -320,7 +320,7 @@ fun LibraryScreen(
 
     val onPlaylistLongPress: (com.theveloper.pixelplay.data.model.Playlist) -> Unit = remember(playlistMultiSelectionState) {
         { playlist ->
-            // 只切换选择，不立即显示表单（类似 songs 多选）
+            // Only toggle selection, don't show sheet immediately (similar to songs multi-selection)
             playlistMultiSelectionState.toggleSelection(playlist)
             android.util.Log.d("PlaylistMultiSelect", "Toggled: ${playlist.name}, total selected: ${playlistMultiSelectionState.selectedPlaylists.value.size}")
         }

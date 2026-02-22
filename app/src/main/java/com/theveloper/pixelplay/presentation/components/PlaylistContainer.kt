@@ -565,6 +565,15 @@ fun PlaylistItem(
                             modifier = Modifier.size(20.dp)
                         )
                     }
+                    if (playlist.source == "NETEASE") {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            painter = painterResource(R.drawable.netease_cloud_music_logo_icon_206716__1_),
+                            contentDescription = "Netease Cloud Music",
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
                 Text(
                     text = "${playlist.songIds.size} Songs",
