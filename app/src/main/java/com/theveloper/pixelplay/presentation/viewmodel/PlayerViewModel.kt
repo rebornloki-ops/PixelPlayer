@@ -133,6 +133,14 @@ data class PlaybackAudioMetadata(
     val bitDepth: Int? = null
 )
 
+private data class SortOptionsSnapshot(
+    val songSort: SortOption,
+    val albumSort: SortOption,
+    val artistSort: SortOption,
+    val folderSort: SortOption,
+    val favoriteSort: SortOption,
+)
+
 @UnstableApi
 @SuppressLint("LogNotTimber")
 @OptIn(coil.annotation.ExperimentalCoilApi::class)
@@ -1077,14 +1085,18 @@ class PlayerViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            userPreferencesRepository.folderBackGestureNavigationFlow.collect { enabled ->
-                _playerUiState.update { it.copy(folderBackGestureNavigationEnabled = enabled) }
-            }
-        }
-
-        viewModelScope.launch {
-            userPreferencesRepository.isAlbumsListViewFlow.collect { isList ->
-                _playerUiState.update { it.copy(isAlbumsListView = isList) }
+            combine(
+                userPreferencesRepository.folderBackGestureNavigationFlow,
+                userPreferencesRepository.isAlbumsListViewFlow,
+            ) { gestureNav, albumsList ->
+                Pair(gestureNav, albumsList)
+            }.collect { (gestureNav, albumsList) ->
+                _playerUiState.update {
+                    it.copy(
+                        folderBackGestureNavigationEnabled = gestureNav,
+                        isAlbumsListView = albumsList,
+                    )
+                }
             }
         }
 
@@ -1252,18 +1264,20 @@ class PlayerViewModel @Inject constructor(
 
         // Collect SearchStateHolder flows
         viewModelScope.launch {
-            searchStateHolder.searchResults.collect { results ->
-                _playerUiState.update { it.copy(searchResults = results) }
-            }
-        }
-        viewModelScope.launch {
-            searchStateHolder.selectedSearchFilter.collect { filter ->
-                _playerUiState.update { it.copy(selectedSearchFilter = filter) }
-            }
-        }
-        viewModelScope.launch {
-            searchStateHolder.searchHistory.collect { history ->
-                _playerUiState.update { it.copy(searchHistory = history) }
+            combine(
+                searchStateHolder.searchResults,
+                searchStateHolder.selectedSearchFilter,
+                searchStateHolder.searchHistory,
+            ) { results, filter, history ->
+                Triple(results, filter, history)
+            }.collect { (results, filter, history) ->
+                _playerUiState.update {
+                    it.copy(
+                        searchResults = results,
+                        selectedSearchFilter = filter,
+                        searchHistory = history,
+                    )
+                }
             }
         }
 
@@ -1279,17 +1293,15 @@ class PlayerViewModel @Inject constructor(
 
         // Collect AiStateHolder flows
         viewModelScope.launch {
-            aiStateHolder.showAiPlaylistSheet.collect { show ->
+            combine(
+                aiStateHolder.showAiPlaylistSheet,
+                aiStateHolder.isGeneratingAiPlaylist,
+                aiStateHolder.aiError,
+            ) { show, generating, error ->
+                Triple(show, generating, error)
+            }.collect { (show, generating, error) ->
                 _showAiPlaylistSheet.value = show
-            }
-        }
-        viewModelScope.launch {
-            aiStateHolder.isGeneratingAiPlaylist.collect { generating ->
                 _isGeneratingAiPlaylist.value = generating
-            }
-        }
-        viewModelScope.launch {
-            aiStateHolder.aiError.collect { error ->
                 _aiError.value = error
             }
         }
@@ -1299,72 +1311,48 @@ class PlayerViewModel @Inject constructor(
             }
         }
 
-        viewModelScope.launch {
-            aiStateHolder.isGeneratingMetadata.collect { generating ->
-                _playerUiState.update { it.copy(isGeneratingAiMetadata = generating) }
-            }
-        }
-
         // Initialize LibraryStateHolder
         libraryStateHolder.initialize(viewModelScope)
 
-        // Collect LibraryStateHolder flows to sync with UI State
+        // Sync library folders and loading states
         viewModelScope.launch {
-//            libraryStateHolder.allSongs.collect { songs ->
-//                _playerUiState.update { it.copy(allSongs = songs, songCount = songs.size) }
-//            }
-//        }
-//        viewModelScope.launch {
-//            libraryStateHolder.albums.collect { albums ->
-//                _playerUiState.update { it.copy(albums = albums) }
-//            }
-//        }
-//        viewModelScope.launch {
-//            libraryStateHolder.artists.collect { artists ->
-//                _playerUiState.update { it.copy(artists = artists) }
-//            }
-        }
-        viewModelScope.launch {
-            libraryStateHolder.musicFolders.collect { folders ->
-                _playerUiState.update { it.copy(musicFolders = folders) }
-            }
-        }
-        // Sync loading states
-        viewModelScope.launch {
-            libraryStateHolder.isLoadingLibrary.collect { loading ->
-                _playerUiState.update { it.copy(isLoadingInitialSongs = loading) }
-            }
-        }
-        viewModelScope.launch {
-            libraryStateHolder.isLoadingCategories.collect { loading ->
-                _playerUiState.update { it.copy(isLoadingLibraryCategories = loading) }
+            combine(
+                libraryStateHolder.musicFolders,
+                libraryStateHolder.isLoadingLibrary,
+                libraryStateHolder.isLoadingCategories,
+            ) { folders, loadingLibrary, loadingCategories ->
+                Triple(folders, loadingLibrary, loadingCategories)
+            }.collect { (folders, loadingLibrary, loadingCategories) ->
+                _playerUiState.update {
+                    it.copy(
+                        musicFolders = folders,
+                        isLoadingInitialSongs = loadingLibrary,
+                        isLoadingLibraryCategories = loadingCategories,
+                    )
+                }
             }
         }
 
-        // Sync sort options
+        // Sync sort options and storage filter
         viewModelScope.launch {
-            libraryStateHolder.currentSongSortOption.collect { sort ->
-                _playerUiState.update { it.copy(currentSongSortOption = sort) }
-            }
-        }
-        viewModelScope.launch {
-            libraryStateHolder.currentAlbumSortOption.collect { sort ->
-                _playerUiState.update { it.copy(currentAlbumSortOption = sort) }
-            }
-        }
-        viewModelScope.launch {
-            libraryStateHolder.currentArtistSortOption.collect { sort ->
-                _playerUiState.update { it.copy(currentArtistSortOption = sort) }
-            }
-        }
-        viewModelScope.launch {
-            libraryStateHolder.currentFolderSortOption.collect { sort ->
-                _playerUiState.update { it.copy(currentFolderSortOption = sort) }
-            }
-        }
-        viewModelScope.launch {
-            libraryStateHolder.currentFavoriteSortOption.collect { sort ->
-                _playerUiState.update { it.copy(currentFavoriteSortOption = sort) }
+            combine(
+                libraryStateHolder.currentSongSortOption,
+                libraryStateHolder.currentAlbumSortOption,
+                libraryStateHolder.currentArtistSortOption,
+                libraryStateHolder.currentFolderSortOption,
+                libraryStateHolder.currentFavoriteSortOption,
+            ) { songSort, albumSort, artistSort, folderSort, favoriteSort ->
+                SortOptionsSnapshot(songSort, albumSort, artistSort, folderSort, favoriteSort)
+            }.collect { snapshot ->
+                _playerUiState.update {
+                    it.copy(
+                        currentSongSortOption = snapshot.songSort,
+                        currentAlbumSortOption = snapshot.albumSort,
+                        currentArtistSortOption = snapshot.artistSort,
+                        currentFolderSortOption = snapshot.folderSort,
+                        currentFavoriteSortOption = snapshot.favoriteSort,
+                    )
+                }
             }
         }
         viewModelScope.launch {
