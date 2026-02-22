@@ -37,6 +37,7 @@ import java.net.UnknownHostException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
+import kotlin.coroutines.cancellation.CancellationException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -92,6 +93,8 @@ class LyricsRepositoryImpl @Inject constructor(
         private const val LRCLIB_MIN_DELAY = 100L
         private const val MAX_CALLS_PER_MINUTE = 30
         private const val AMLLDB_NCM_LYRICS_BASE_URL = "https://amlldb.bikonoo.com/lyrics/ncm-lyrics/"
+        private const val NETWORK_RETRY_ATTEMPTS = 3
+        private const val NETWORK_RETRY_INITIAL_DELAY_MS = 500L
     }
 
     // Repository scope for background tasks
@@ -127,8 +130,17 @@ class LyricsRepositoryImpl @Inject constructor(
         val channel = Channel<RemoteSearchBatch>(capacity = strategies.size)
         val jobs = strategies.map { strategy ->
             launch {
-                val responses = runCatching { strategy.request() }
-                    .getOrNull()
+                val responses = runCatching {
+                    withNetworkRetry(operationName = "lrclib_strategy:${strategy.name}") {
+                        strategy.request()
+                    }
+                }.getOrElse { error ->
+                    Log.d(
+                        TAG,
+                        "Strategy ${strategy.name} failed after retries: ${error.message}"
+                    )
+                    null
+                }
                     ?.toList()
                     .orEmpty()
                 channel.trySend(
@@ -152,6 +164,47 @@ class LyricsRepositoryImpl @Inject constructor(
 
         channel.close()
         emptyList()
+    }
+
+    private suspend fun <T> withNetworkRetry(
+        operationName: String,
+        maxAttempts: Int = NETWORK_RETRY_ATTEMPTS,
+        initialDelayMs: Long = NETWORK_RETRY_INITIAL_DELAY_MS,
+        shouldRetry: (Throwable) -> Boolean = { it.isRetryableNetworkError() },
+        block: suspend () -> T
+    ): T {
+        var delayMs = initialDelayMs
+        repeat(maxAttempts) { attempt ->
+            try {
+                return block()
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                val lastAttempt = attempt == maxAttempts - 1
+                val retryable = shouldRetry(throwable)
+                if (!retryable || lastAttempt) {
+                    throw throwable
+                }
+                Log.d(
+                    TAG,
+                    "Retrying $operationName after failure (${attempt + 1}/$maxAttempts): ${throwable.message}"
+                )
+                delay(delayMs)
+                delayMs *= 2
+            }
+        }
+        error("Unreachable retry state for $operationName")
+    }
+
+    private fun Throwable.isRetryableNetworkError(): Boolean {
+        return when (this) {
+            is IOException -> true
+            is HttpException -> code() == 429 || code() >= 500
+            else -> false
+        }
+    }
+
+    private fun Int.isRetryableHttpStatusCode(): Boolean {
+        return this == 429 || this in 500..599
     }
 
     /**
@@ -380,7 +433,9 @@ class LyricsRepositoryImpl @Inject constructor(
                           Log.d(TAG, "Strategy 4: Searching with super simplified title: '$superCleanTitle' (no artist)")
                           effectiveTitle = superCleanTitle
                           val fallbackResults = runCatching {
-                                lrcLibApiService.searchLyrics(trackName = superCleanTitle)
+                                withNetworkRetry(operationName = "lrclib_super_clean_search") {
+                                    lrcLibApiService.searchLyrics(trackName = superCleanTitle)
+                                }
                           }.getOrNull()
                           if (!fallbackResults.isNullOrEmpty()) {
                               results = fallbackResults.toList()
@@ -471,15 +526,25 @@ class LyricsRepositoryImpl @Inject constructor(
             .build()
 
         try {
-            okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                val ttml = response.body?.string().orEmpty()
-                if (ttml.isBlank() || ttml.contains("歌词不存在")) return@withContext null
-                val lrc = convertAmlTtmlToLrc(ttml) ?: return@withContext null
-                val parsed = LyricsUtils.parseLyrics(lrc)
-                if (!parsed.isValid()) return@withContext null
-                return@withContext parsed.copy(areFromRemote = true)
+            val ttml = withNetworkRetry(
+                operationName = "amlldb_fetch:$neteaseSongId",
+                shouldRetry = { throwable -> throwable is IOException }
+            ) {
+                okHttpClient.newCall(request).execute().use { response ->
+                    when {
+                        response.isSuccessful -> response.body?.string().orEmpty()
+                        response.code.isRetryableHttpStatusCode() ->
+                            throw IOException("AMLLDB HTTP ${response.code} for songId=$neteaseSongId")
+                        else -> ""
+                    }
+                }
             }
+
+            if (ttml.isBlank() || ttml.contains("歌词不存在")) return@withContext null
+            val lrc = convertAmlTtmlToLrc(ttml) ?: return@withContext null
+            val parsed = LyricsUtils.parseLyrics(lrc)
+            if (!parsed.isValid()) return@withContext null
+            return@withContext parsed.copy(areFromRemote = true)
         } catch (e: Exception) {
             Log.w(TAG, "AMLLDB fetch failed for $neteaseSongId: ${e.message}")
             return@withContext null
@@ -829,12 +894,14 @@ class LyricsRepositoryImpl @Inject constructor(
             }
 
             // Fallback: Try the exact match API (less likely to succeed, but worth a shot)
-            val response = lrcLibApiService.getLyrics(
-                trackName = song.title,
-                artistName = song.displayArtist,
-                albumName = song.album,
-                duration = (song.duration / 1000).toInt()
-            )
+            val response = withNetworkRetry(operationName = "lrclib_get_lyrics") {
+                lrcLibApiService.getLyrics(
+                    trackName = song.title,
+                    artistName = song.displayArtist,
+                    albumName = song.album,
+                    duration = (song.duration / 1000).toInt()
+                )
+            }
 
             if (response != null && (!response.syncedLyrics.isNullOrEmpty() || !response.plainLyrics.isNullOrEmpty())) {
                 val rawLyricsToSave = response.syncedLyrics ?: response.plainLyrics

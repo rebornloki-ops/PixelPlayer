@@ -305,8 +305,8 @@ object AppModule {
     }
 
     /**
-     * Provee una instancia singleton de OkHttpClient con un interceptor de logging.
-     * Configured with 10s timeout and retry logic (2 retries).
+     * Provee una instancia singleton de OkHttpClient con logging e interceptor de User-Agent.
+     * Retry logic with backoff is handled in coroutine-based callers.
      */
     @Provides
     @Singleton
@@ -332,6 +332,7 @@ object AppModule {
             .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
             .writeTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             // Add User-Agent header (required by some APIs)
             .addInterceptor { chain ->
                 val originalRequest = chain.request()
@@ -340,40 +341,13 @@ object AppModule {
                     .build()
                 chain.proceed(requestWithUserAgent)
             }
-            // Retry interceptor
-            .addInterceptor { chain ->
-                var request = chain.request()
-                var response: okhttp3.Response? = null
-                var lastException: java.io.IOException? = null
-                
-                // Retry up to 2 times
-                repeat(3) { attempt ->
-                    try {
-                        response?.close()
-                        val currentResponse = chain.proceed(request)
-                        response = currentResponse
-                        if (currentResponse.isSuccessful || currentResponse.code == 404) {
-                            return@addInterceptor currentResponse
-                        }
-                    } catch (e: java.io.IOException) {
-                        lastException = e
-                        if (attempt < 2) {
-                            // Exponential backoff: 500ms, 1000ms
-                            Thread.sleep((500L * (attempt + 1)))
-                        }
-                    }
-                }
-                
-                // If we have a response, return it; otherwise throw the last exception
-                response ?: throw (lastException ?: java.io.IOException("Unknown network error"))
-            }
             .addInterceptor(loggingInterceptor)
             .build()
     }
 
     /**
      * Provee una instancia de OkHttpClient con timeouts para búsquedas de lyrics.
-     * Includes DNS resolver, modern TLS, connection pool, and retry logic.
+     * Includes DNS resolver, modern TLS, connection pool, and connection retry.
      */
     @Provides
     @Singleton
@@ -424,25 +398,6 @@ object AppModule {
                     .header("Accept", "application/json")
                     .build()
                 chain.proceed(requestWithHeaders)
-            }
-            // Retry interceptor for "unexpected end of stream" errors
-            // retryOnConnectionFailure only retries connection setup, NOT stream read errors
-            .addInterceptor { chain ->
-                val request = chain.request()
-                var lastException: java.io.IOException? = null
-                for (attempt in 0..2) {
-                    try {
-                        if (attempt > 0) {
-                            Thread.sleep(500L * attempt) // backoff: 500ms, 1000ms
-                            android.util.Log.d("OkHttp-Retry", "Retry attempt $attempt for ${request.url}")
-                        }
-                        return@addInterceptor chain.proceed(request)
-                    } catch (e: java.io.IOException) {
-                        lastException = e
-                        android.util.Log.w("OkHttp-Retry", "Attempt $attempt failed: ${e.message}")
-                    }
-                }
-                throw lastException ?: java.io.IOException("Retry attempts exhausted for ${request.url}")
             }
             .addInterceptor(loggingInterceptor)
             .build()
