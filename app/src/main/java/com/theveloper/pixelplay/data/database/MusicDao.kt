@@ -307,7 +307,7 @@ interface MusicDao {
     ): Flow<List<SongEntity>>
 
     @Query("""
-        SELECT id, parent_directory_path, title FROM songs
+        SELECT id, parent_directory_path, title, album_art_uri_string FROM songs
         WHERE (:applyDirectoryFilter = 0 OR id < 0 OR parent_directory_path IN (:allowedParentDirs))
         AND (
             :filterMode = 0
