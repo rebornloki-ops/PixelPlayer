@@ -116,6 +116,7 @@ import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.io.File
 import java.util.ArrayDeque
+import java.util.Locale
 import javax.inject.Inject
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
@@ -124,6 +125,7 @@ import coil.memory.MemoryCache
 
 private const val CAST_LOG_TAG = "PlayerCastTransfer"
 private const val ENABLE_FOLDERS_SOURCE_SWITCHING = false
+private const val MAX_ALBUM_BATCH_SELECTION = 6
 
 data class PlaybackAudioMetadata(
     val mediaId: String? = null,
@@ -2758,6 +2760,61 @@ class PlayerViewModel @Inject constructor(
             _toastEvents.emit("${songs.size} songs will play next")
         }
         multiSelectionStateHolder.clearSelection()
+    }
+
+    /**
+     * Resolves songs from selected albums (in selection order), builds a queue, and starts playback.
+     * For safety we process at most [MAX_ALBUM_BATCH_SELECTION] albums at once.
+     */
+    fun queueAndPlaySelectedAlbums(albums: List<Album>) {
+        if (albums.isEmpty()) return
+
+        val albumsToProcess = albums.take(MAX_ALBUM_BATCH_SELECTION)
+        val wasTrimmed = albums.size > albumsToProcess.size
+
+        viewModelScope.launch {
+            try {
+                val queuedSongs = withContext(Dispatchers.IO) {
+                    buildList {
+                        albumsToProcess.forEach { album ->
+                            val albumSongs = musicRepository.getSongsForAlbum(album.id).first()
+                            if (albumSongs.isNotEmpty()) {
+                                addAll(
+                                    albumSongs.sortedWith(
+                                        compareBy<Song> {
+                                            if (it.trackNumber > 0) it.trackNumber else Int.MAX_VALUE
+                                        }.thenBy { it.title.lowercase(Locale.getDefault()) }
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (queuedSongs.isEmpty()) {
+                    _toastEvents.emit("No playable songs found in selected albums")
+                    return@launch
+                }
+
+                val queueName = if (albumsToProcess.size == 1) {
+                    albumsToProcess.first().title
+                } else {
+                    "Selected Albums"
+                }
+
+                playSongs(queuedSongs, queuedSongs.first(), queueName, null)
+                _isSheetVisible.value = true
+
+                if (wasTrimmed) {
+                    _toastEvents.emit("Only the first $MAX_ALBUM_BATCH_SELECTION albums were queued")
+                } else {
+                    _toastEvents.emit("${albumsToProcess.size} albums queued (${queuedSongs.size} songs)")
+                }
+            } catch (e: Exception) {
+                Log.e("PlayerViewModel", "Error queuing selected albums", e)
+                _toastEvents.emit("Could not queue selected albums")
+            }
+        }
     }
 
     /**
