@@ -155,7 +155,7 @@ class FolderTreeBuilder @Inject constructor() {
             albumId = -1L,
             path = syntheticPath,
             contentUriString = "",
-            albumArtUriString = null,
+            albumArtUriString = albumArtUriString,
             duration = 0L,
             trackNumber = 0,
             year = 0,

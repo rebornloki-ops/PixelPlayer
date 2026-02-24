@@ -378,41 +378,11 @@ fun PlaylistItem(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.size(48.dp)) {
-                PlaylistCover(
-                    playlist = playlist,
-                    playlistSongs = playlistSongs,
-                    size = 48.dp
-                )
-               
-               if (isSelected && isSelectionMode) {
-                   Box(
-                       modifier = Modifier
-                           .fillMaxSize()
-                           .background(
-                               color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                               shape = CircleShape 
-                           ),
-                       contentAlignment = Alignment.Center
-                   ) {
-                       if (selectionIndex >= 0) {
-                           Text(
-                               text = "${selectionIndex + 1}",
-                               style = MaterialTheme.typography.titleSmall,
-                               fontWeight = FontWeight.Bold,
-                               color = MaterialTheme.colorScheme.onPrimary
-                           )
-                       } else {
-                           Icon(
-                               imageVector = Icons.Rounded.CheckCircle,
-                               contentDescription = "Selected",
-                               tint = MaterialTheme.colorScheme.onPrimary,
-                               modifier = Modifier.size(24.dp)
-                           )
-                       }
-                   }
-               }
-            }
+            PlaylistCover(
+                playlist = playlist,
+                playlistSongs = playlistSongs,
+                size = 48.dp
+            )
 
             Spacer(modifier = Modifier.width(16.dp))
 
@@ -455,7 +425,37 @@ fun PlaylistItem(
                 )
             }
 
+            if (isSelected && isSelectionMode) {
+                Spacer(modifier = Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (selectionIndex >= 0) {
+                        Text(
+                            text = "${selectionIndex + 1}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.CheckCircle,
+                            contentDescription = "Selected",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
             if (isAddingToPlaylist && selectedPlaylists != null) {
+                Spacer(modifier = Modifier.width(8.dp))
                 Checkbox(
                     checked = selectedPlaylists[playlist.id] ?: false,
                     onCheckedChange = { isChecked -> selectedPlaylists[playlist.id] = isChecked }
