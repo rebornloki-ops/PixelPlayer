@@ -101,6 +101,8 @@ class MusicService : MediaLibraryService() {
     private var keepPlayingInBackground = true
     private var isManualShuffleEnabled = false
     private var persistentShuffleEnabled = false
+    // Holds the previous main-thread UncaughtExceptionHandler so we can restore it in onDestroy.
+    private var previousMainThreadExceptionHandler: Thread.UncaughtExceptionHandler? = null
     // --- Counted Play State ---
     private var countedPlayActive = false
     private var countedPlayTarget = 0
@@ -115,6 +117,24 @@ class MusicService : MediaLibraryService() {
     }
 
     override fun onCreate() {
+        // Media3's Cast SDK callback path (MediaSessionImpl$$ExternalSyntheticLambda →
+        // Util.postOrRun → MediaNotificationManager.updateNotificationInternal) calls
+        // Service.startForeground() directly, bypassing onUpdateNotification() entirely.
+        // Since startForeground() is final we cannot override it. Instead we intercept
+        // ForegroundServiceStartNotAllowedException on the main thread before it reaches
+        // ActivityThread and crashes the process.
+        val existingHandler = Thread.currentThread().uncaughtExceptionHandler
+        previousMainThreadExceptionHandler = existingHandler
+        Thread.currentThread().setUncaughtExceptionHandler { thread, throwable ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                throwable is ForegroundServiceStartNotAllowedException
+            ) {
+                Timber.tag(TAG).w(throwable, "Suppressed ForegroundServiceStartNotAllowedException from Media3/Cast internal path")
+            } else {
+                existingHandler?.uncaughtException(thread, throwable)
+            }
+        }
+
         super.onCreate()
         
         // Ensure engine is ready (re-initialize if service was restarted)
@@ -404,7 +424,8 @@ class MusicService : MediaLibraryService() {
 
         mediaSession = MediaLibrarySession.Builder(this, engine.masterPlayer, callback)
             .setSessionActivity(getOpenAppPendingIntent())
-            .setBitmapLoader(CoilBitmapLoader(this))
+            .setCallback(callback)
+            .setBitmapLoader(CoilBitmapLoader(this, serviceScope))
             .build()
 
         setMediaNotificationProvider(
@@ -555,6 +576,8 @@ class MusicService : MediaLibraryService() {
         engine.release()
         controller.release()
         serviceScope.cancel()
+        Thread.currentThread().setUncaughtExceptionHandler(previousMainThreadExceptionHandler)
+        previousMainThreadExceptionHandler = null
         super.onDestroy()
     }
 
@@ -695,7 +718,9 @@ class MusicService : MediaLibraryService() {
         )
     }
 
-    private val widgetArtByteArrayCache = LruCache<String, ByteArray>(5)
+    private val widgetArtByteArrayCache = object : LruCache<String, ByteArray>(5 * 256 * 1024) {
+        override fun sizeOf(key: String, value: ByteArray): Int = value.size
+    }
 
     private suspend fun getAlbumArtForWidget(embeddedArt: ByteArray?, artUri: Uri?): Pair<ByteArray?, String?> = withContext(Dispatchers.IO) {
         if (embeddedArt != null && embeddedArt.isNotEmpty()) {
@@ -759,6 +784,10 @@ class MusicService : MediaLibraryService() {
             drawable?.let {
                 val bitmap = it.toBitmap(256, 256)
                 val stream = ByteArrayOutputStream()
+                // Do NOT recycle bitmap here: toBitmap() may return Coil's cached Bitmap
+                // object directly. Recycling it would invalidate any copy already handed
+                // to Media3, causing "Can't copy a recycled bitmap" on setMetadata().
+                // Coil manages the lifecycle of its own cached bitmaps.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 80, stream)
                 } else {
