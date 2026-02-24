@@ -52,6 +52,11 @@ fun WearNavigation() {
                 onBrowseClick = {
                     navController.navigate(WearScreens.BROWSE)
                 },
+                onVolumeClick = {
+                    navController.navigate(WearScreens.VOLUME) {
+                        launchSingleTop = true
+                    }
+                },
             )
         }
 

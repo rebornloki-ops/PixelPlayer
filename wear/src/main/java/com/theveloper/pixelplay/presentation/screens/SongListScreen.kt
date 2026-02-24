@@ -28,6 +28,7 @@ import com.google.android.horologist.compose.layout.ScalingLazyColumn
 import com.google.android.horologist.compose.layout.rememberResponsiveColumnState
 import com.theveloper.pixelplay.presentation.viewmodel.BrowseUiState
 import com.theveloper.pixelplay.presentation.viewmodel.WearBrowseViewModel
+import com.theveloper.pixelplay.presentation.theme.LocalWearPalette
 import com.theveloper.pixelplay.shared.WearBrowseRequest
 import com.theveloper.pixelplay.shared.WearLibraryItem
 import androidx.compose.material.icons.Icons
@@ -48,6 +49,7 @@ fun SongListScreen(
     viewModel: WearBrowseViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val palette = LocalWearPalette.current
 
     // Determine the context type for playback (maps browseType to context)
     val contextType = when (browseType) {
@@ -71,9 +73,9 @@ fun SongListScreen(
 
     val background = Brush.radialGradient(
         colors = listOf(
-            Color(0xFF6C3AD8),
-            Color(0xFF2C1858),
-            Color(0xFF130B23),
+            palette.gradientTop,
+            palette.gradientMiddle,
+            palette.gradientBottom,
         ),
     )
 
@@ -86,7 +88,7 @@ fun SongListScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
-                    indicatorColor = Color(0xFFE1D5FF),
+                    indicatorColor = palette.textSecondary,
                 )
             }
         }
@@ -103,7 +105,7 @@ fun SongListScreen(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.title3,
-                        color = Color(0xFFF4EEFF),
+                        color = palette.textPrimary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -112,7 +114,7 @@ fun SongListScreen(
                     Text(
                         text = state.message,
                         style = MaterialTheme.typography.body2,
-                        color = Color(0xFFFFB7C5),
+                        color = palette.textError,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -121,18 +123,19 @@ fun SongListScreen(
                 }
                 item {
                     Chip(
-                        label = { Text("Retry", color = Color(0xFFF4EEFF)) },
+                        label = { Text("Retry", color = palette.textPrimary) },
                         icon = {
                             Icon(
                                 Icons.Rounded.Refresh,
                                 contentDescription = "Retry",
-                                tint = Color(0xFFE1D5FF),
+                                tint = palette.textSecondary,
                                 modifier = Modifier.size(18.dp),
                             )
                         },
                         onClick = { viewModel.refresh() },
                         colors = ChipDefaults.chipColors(
-                            backgroundColor = Color(0xFFD8CEF3).copy(alpha = 0.18f),
+                            backgroundColor = palette.chipContainer,
+                            contentColor = palette.chipContent,
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -154,7 +157,7 @@ fun SongListScreen(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.title3,
-                        color = Color(0xFFF4EEFF),
+                        color = palette.textPrimary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -167,7 +170,7 @@ fun SongListScreen(
                         Text(
                             text = "No songs",
                             style = MaterialTheme.typography.body2,
-                            color = Color(0xFFE1D5FF).copy(alpha = 0.6f),
+                            color = palette.textSecondary.copy(alpha = 0.7f),
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -200,13 +203,14 @@ private fun SongChip(
     song: WearLibraryItem,
     onClick: () -> Unit,
 ) {
+    val palette = LocalWearPalette.current
     Chip(
         label = {
             Text(
                 text = song.title,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = Color(0xFFF4EEFF),
+                color = palette.textPrimary,
             )
         },
         secondaryLabel = if (song.subtitle.isNotEmpty()) {
@@ -215,7 +219,7 @@ private fun SongChip(
                     text = song.subtitle,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = Color(0xFFE1D5FF).copy(alpha = 0.7f),
+                    color = palette.textSecondary.copy(alpha = 0.78f),
                 )
             }
         } else null,
@@ -223,13 +227,14 @@ private fun SongChip(
             Icon(
                 imageVector = Icons.Rounded.MusicNote,
                 contentDescription = null,
-                tint = Color(0xFFE1D5FF),
+                tint = palette.textSecondary,
                 modifier = Modifier.size(18.dp),
             )
         },
         onClick = onClick,
         colors = ChipDefaults.chipColors(
-            backgroundColor = Color(0xFFD8CEF3).copy(alpha = 0.14f),
+            backgroundColor = palette.chipContainer,
+            contentColor = palette.chipContent,
         ),
         modifier = Modifier.fillMaxWidth(),
     )

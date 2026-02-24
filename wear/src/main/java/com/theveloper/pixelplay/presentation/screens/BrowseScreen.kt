@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.theveloper.pixelplay.presentation.theme.LocalWearPalette
 
 /**
  * Root browse screen showing library categories.
@@ -37,11 +38,12 @@ fun BrowseScreen(
     onCategoryClick: (browseType: String, title: String) -> Unit,
 ) {
     val columnState = rememberResponsiveColumnState()
+    val palette = LocalWearPalette.current
     val background = Brush.radialGradient(
         colors = listOf(
-            Color(0xFF6C3AD8),
-            Color(0xFF2C1858),
-            Color(0xFF130B23),
+            palette.gradientTop,
+            palette.gradientMiddle,
+            palette.gradientBottom,
         ),
     )
 
@@ -55,7 +57,7 @@ fun BrowseScreen(
             Text(
                 text = "Library",
                 style = MaterialTheme.typography.title2,
-                color = Color(0xFFF4EEFF),
+                color = palette.textPrimary,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -67,7 +69,7 @@ fun BrowseScreen(
             BrowseCategoryChip(
                 label = "Favorites",
                 icon = Icons.Rounded.Favorite,
-                iconTint = Color(0xFFF1608E),
+                iconTint = palette.favoriteActive,
                 onClick = { onCategoryClick("favorites", "Favorites") },
             )
         }
@@ -76,7 +78,7 @@ fun BrowseScreen(
             BrowseCategoryChip(
                 label = "Playlists",
                 icon = Icons.AutoMirrored.Rounded.QueueMusic,
-                iconTint = Color(0xFF44CDC4),
+                iconTint = palette.shuffleActive,
                 onClick = { onCategoryClick("playlists", "Playlists") },
             )
         }
@@ -85,7 +87,7 @@ fun BrowseScreen(
             BrowseCategoryChip(
                 label = "Albums",
                 icon = Icons.Rounded.Album,
-                iconTint = Color(0xFF70A6FF),
+                iconTint = palette.repeatActive,
                 onClick = { onCategoryClick("albums", "Albums") },
             )
         }
@@ -94,7 +96,7 @@ fun BrowseScreen(
             BrowseCategoryChip(
                 label = "Artists",
                 icon = Icons.Rounded.Person,
-                iconTint = Color(0xFFFFB74D),
+                iconTint = palette.textSecondary,
                 onClick = { onCategoryClick("artists", "Artists") },
             )
         }
@@ -103,7 +105,7 @@ fun BrowseScreen(
             BrowseCategoryChip(
                 label = "All Songs",
                 icon = Icons.Rounded.MusicNote,
-                iconTint = Color(0xFFE1D5FF),
+                iconTint = palette.textSecondary,
                 onClick = { onCategoryClick("all_songs", "All Songs") },
             )
         }
@@ -117,11 +119,12 @@ private fun BrowseCategoryChip(
     iconTint: Color,
     onClick: () -> Unit,
 ) {
+    val palette = LocalWearPalette.current
     Chip(
         label = {
             Text(
                 text = label,
-                color = Color(0xFFF4EEFF),
+                color = palette.textPrimary,
             )
         },
         icon = {
@@ -134,7 +137,8 @@ private fun BrowseCategoryChip(
         },
         onClick = onClick,
         colors = ChipDefaults.chipColors(
-            backgroundColor = Color(0xFFD8CEF3).copy(alpha = 0.18f),
+            backgroundColor = palette.chipContainer,
+            contentColor = palette.chipContent,
         ),
         modifier = Modifier.fillMaxWidth(),
     )

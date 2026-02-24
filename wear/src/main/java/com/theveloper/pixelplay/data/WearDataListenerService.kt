@@ -1,6 +1,5 @@
 package com.theveloper.pixelplay.data
 
-import android.app.ActivityManager
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.SystemClock
@@ -45,7 +44,8 @@ class WearDataListenerService : WearableListenerService() {
 
     companion object {
         private const val TAG = "WearDataListener"
-        private const val AUTO_LAUNCH_COOLDOWN_MS = 15_000L
+        private const val AUTO_LAUNCH_COOLDOWN_MS = 2_500L
+        private const val AUTO_LAUNCH_KEEP_ALIVE_MS = 7_000L
 
         @Volatile
         private var lastAutoLaunchElapsedMs = 0L
@@ -119,23 +119,36 @@ class WearDataListenerService : WearableListenerService() {
 
     private fun maybeAutoLaunchPlayer(playerState: WearPlayerState) {
         val isNowPlaying = playerState.isPlaying && playerState.songId.isNotEmpty()
-        val playbackJustStarted = !lastKnownPlaying && isNowPlaying
-        val songChangedWhilePlaying =
-            isNowPlaying && playerState.songId != lastAutoLaunchSongId
+        if (!isNowPlaying) {
+            lastKnownPlaying = false
+            return
+        }
+        if (WearMainActivity.isForeground) {
+            lastKnownPlaying = true
+            return
+        }
 
-        lastKnownPlaying = isNowPlaying
-
-        if (!playbackJustStarted && !songChangedWhilePlaying) return
-        if (isWearPlayerOnTop()) return
+        val playbackJustStarted = !lastKnownPlaying
+        val songChangedWhilePlaying = playerState.songId != lastAutoLaunchSongId
 
         val now = SystemClock.elapsedRealtime()
-        if (now - lastAutoLaunchElapsedMs < AUTO_LAUNCH_COOLDOWN_MS) return
+        val keepAliveExpired = now - lastAutoLaunchElapsedMs >= AUTO_LAUNCH_KEEP_ALIVE_MS
+        val shouldAutoOpen = playbackJustStarted || songChangedWhilePlaying || keepAliveExpired
+        if (!shouldAutoOpen) {
+            lastKnownPlaying = true
+            return
+        }
+        if (now - lastAutoLaunchElapsedMs < AUTO_LAUNCH_COOLDOWN_MS) {
+            lastKnownPlaying = true
+            return
+        }
 
         val intent = Intent(this, WearMainActivity::class.java).apply {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             )
             putExtra("auto_open_reason", "phone_playback")
         }
@@ -144,21 +157,12 @@ class WearDataListenerService : WearableListenerService() {
             startActivity(intent)
             lastAutoLaunchElapsedMs = now
             lastAutoLaunchSongId = playerState.songId
+            lastKnownPlaying = true
             Timber.tag(TAG).d("Auto-opened Wear player for active phone playback")
         }.onFailure { e ->
+            lastKnownPlaying = true
             Timber.tag(TAG).w(e, "Failed to auto-open Wear player")
         }
-    }
-
-    private fun isWearPlayerOnTop(): Boolean {
-        val activityManager = getSystemService(ActivityManager::class.java) ?: return false
-        val topActivityClassName = activityManager
-            .appTasks
-            .firstOrNull()
-            ?.taskInfo
-            ?.topActivity
-            ?.className
-        return topActivityClassName == WearMainActivity::class.java.name
     }
 
     /**

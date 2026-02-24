@@ -48,6 +48,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.LibraryMusic
@@ -58,10 +59,12 @@ import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import com.theveloper.pixelplay.presentation.theme.LocalWearPalette
 
 @Composable
 fun PlayerScreen(
     onBrowseClick: () -> Unit = {},
+    onVolumeClick: () -> Unit = {},
     viewModel: WearPlayerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.playerState.collectAsState()
@@ -79,6 +82,7 @@ fun PlayerScreen(
         onToggleShuffle = viewModel::toggleShuffle,
         onCycleRepeat = viewModel::cycleRepeat,
         onBrowseClick = onBrowseClick,
+        onVolumeClick = onVolumeClick,
     )
 }
 
@@ -94,13 +98,15 @@ private fun PlayerContent(
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
     onBrowseClick: () -> Unit,
+    onVolumeClick: () -> Unit,
 ) {
     val columnState = rememberResponsiveColumnState()
+    val palette = LocalWearPalette.current
     val background = Brush.radialGradient(
         colors = listOf(
-            Color(0xFF6C3AD8),
-            Color(0xFF2C1858),
-            Color(0xFF130B23),
+            palette.gradientTop,
+            palette.gradientMiddle,
+            palette.gradientBottom,
         ),
     )
 
@@ -115,7 +121,7 @@ private fun PlayerContent(
             Text(
                 text = clock,
                 style = MaterialTheme.typography.body1,
-                color = Color(0xFFF4EEFF),
+                color = palette.textPrimary,
                 modifier = Modifier.padding(top = 0.dp),
             )
         }
@@ -151,27 +157,20 @@ private fun PlayerContent(
                 onToggleFavorite = onToggleFavorite,
                 onToggleShuffle = onToggleShuffle,
                 onCycleRepeat = onCycleRepeat,
+                favoriteActiveColor = palette.favoriteActive,
+                shuffleActiveColor = palette.shuffleActive,
+                repeatActiveColor = palette.repeatActive,
             )
         }
 
         item { Spacer(modifier = Modifier.height(2.dp)) }
 
         item {
-            Box(
-                modifier = Modifier
-                    .size(width = 54.dp, height = 42.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFFD8CEF3).copy(alpha = 0.25f))
-                    .clickable(onClick = onBrowseClick),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.LibraryMusic,
-                    contentDescription = "Library",
-                    tint = Color(0xFFE8E0FF),
-                    modifier = Modifier.size(22.dp),
-                )
-            }
+            UtilityActionRow(
+                enabled = true,
+                onBrowseClick = onBrowseClick,
+                onVolumeClick = onVolumeClick,
+            )
         }
 
         if (!isPhoneConnected) {
@@ -179,7 +178,7 @@ private fun PlayerContent(
                 Text(
                     text = "Phone disconnected",
                     style = MaterialTheme.typography.body2,
-                    color = Color(0xFFFFB7C5),
+                    color = palette.textError,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -195,6 +194,7 @@ private fun HeaderBlock(
     state: WearPlayerState,
     isPhoneConnected: Boolean,
 ) {
+    val palette = LocalWearPalette.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -205,7 +205,7 @@ private fun HeaderBlock(
             text = state.songTitle.ifEmpty { "Song name" },
             style = MaterialTheme.typography.title2,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFFF4ECFF),
+            color = palette.textPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -218,7 +218,7 @@ private fun HeaderBlock(
                 else -> "Artist name"
             },
             style = MaterialTheme.typography.body1,
-            color = if (isPhoneConnected) Color(0xFFE1D5FF) else Color(0xFFFFC2CF),
+            color = if (isPhoneConnected) palette.textSecondary else palette.textError,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
@@ -282,8 +282,9 @@ private fun FlattenedControlButton(
     width: Dp,
     height: Dp,
 ) {
-    val container = if (enabled) Color(0xFFE6DBFF).copy(alpha = 0.95f) else Color(0xFF9185AC)
-    val tint = if (enabled) Color(0xFF2C0C62) else Color(0xFF615C70)
+    val palette = LocalWearPalette.current
+    val container = if (enabled) palette.controlContainer else palette.controlDisabledContainer
+    val tint = if (enabled) palette.controlContent else palette.controlDisabledContent
     val shape = CircleShape
 
     Box(
@@ -309,6 +310,7 @@ private fun CenterPlayButton(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
+    val palette = LocalWearPalette.current
     val animatedCorner by animateDpAsState(
         targetValue = if (isPlaying) 18.dp else 32.dp,
         animationSpec = spring(),
@@ -325,12 +327,12 @@ private fun CenterPlayButton(
         label = "playHeight",
     )
     val container by animateColorAsState(
-        targetValue = if (enabled) Color(0xFFF2EAFF) else Color(0xFFA69ABF),
+        targetValue = if (enabled) palette.controlContainer else palette.controlDisabledContainer,
         animationSpec = spring(),
         label = "playContainer",
     )
     val tint by animateColorAsState(
-        targetValue = if (enabled) Color(0xFF320E69) else Color(0xFF635D74),
+        targetValue = if (enabled) palette.controlContent else palette.controlDisabledContent,
         animationSpec = spring(),
         label = "playTint",
     )
@@ -361,6 +363,9 @@ private fun SecondaryControlsRow(
     onToggleFavorite: () -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
+    favoriteActiveColor: Color,
+    shuffleActiveColor: Color,
+    repeatActiveColor: Color,
 ) {
     Row(
         modifier = Modifier
@@ -373,7 +378,7 @@ private fun SecondaryControlsRow(
             icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
             enabled = enabled,
             active = isFavorite,
-            activeColor = Color(0xFFF1608E),
+            activeColor = favoriteActiveColor,
             onClick = onToggleFavorite,
             contentDescription = "Like",
         )
@@ -381,7 +386,7 @@ private fun SecondaryControlsRow(
             icon = Icons.Rounded.Shuffle,
             enabled = enabled,
             active = isShuffleEnabled,
-            activeColor = Color(0xFF44CDC4),
+            activeColor = shuffleActiveColor,
             onClick = onToggleShuffle,
             contentDescription = "Shuffle",
         )
@@ -389,7 +394,7 @@ private fun SecondaryControlsRow(
             icon = if (repeatMode == 1) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
             enabled = enabled,
             active = repeatMode != 0,
-            activeColor = Color(0xFF70A6FF),
+            activeColor = repeatActiveColor,
             onClick = onCycleRepeat,
             contentDescription = "Repeat",
         )
@@ -405,20 +410,21 @@ private fun SecondaryActionButton(
     onClick: () -> Unit,
     contentDescription: String,
 ) {
+    val palette = LocalWearPalette.current
     val container by animateColorAsState(
         targetValue = when {
-            !enabled -> Color(0xFF8F84A9).copy(alpha = 0.45f)
+            !enabled -> palette.controlDisabledContainer.copy(alpha = 0.42f)
             active -> activeColor.copy(alpha = 0.36f)
-            else -> Color(0xFFD8CEF3).copy(alpha = 0.25f)
+            else -> palette.chipContainer
         },
         animationSpec = spring(),
         label = "secondaryContainer",
     )
     val tint by animateColorAsState(
         targetValue = when {
-            !enabled -> Color(0xFF6A647C)
-            active -> Color(0xFFF5F0FF)
-            else -> Color(0xFFE8E0FF)
+            !enabled -> palette.controlDisabledContent
+            active -> palette.textPrimary
+            else -> palette.chipContent
         },
         animationSpec = spring(),
         label = "secondaryTint",
@@ -437,6 +443,59 @@ private fun SecondaryActionButton(
             contentDescription = contentDescription,
             tint = tint,
             modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+@Composable
+private fun UtilityActionRow(
+    enabled: Boolean,
+    onBrowseClick: () -> Unit,
+    onVolumeClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        UtilityActionButton(
+            icon = Icons.Rounded.LibraryMusic,
+            contentDescription = "Library",
+            enabled = enabled,
+            onClick = onBrowseClick,
+        )
+        UtilityActionButton(
+            icon = Icons.AutoMirrored.Rounded.VolumeUp,
+            contentDescription = "Volume",
+            enabled = enabled,
+            onClick = onVolumeClick,
+        )
+    }
+}
+
+@Composable
+private fun UtilityActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val palette = LocalWearPalette.current
+    val container = if (enabled) palette.chipContainer else palette.controlDisabledContainer.copy(alpha = 0.35f)
+    val tint = if (enabled) palette.chipContent else palette.controlDisabledContent
+    Box(
+        modifier = Modifier
+            .size(width = 54.dp, height = 42.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(container)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(22.dp),
         )
     }
 }

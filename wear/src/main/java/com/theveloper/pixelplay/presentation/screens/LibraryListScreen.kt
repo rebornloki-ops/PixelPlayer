@@ -28,6 +28,7 @@ import com.google.android.horologist.compose.layout.ScalingLazyColumn
 import com.google.android.horologist.compose.layout.rememberResponsiveColumnState
 import com.theveloper.pixelplay.presentation.viewmodel.BrowseUiState
 import com.theveloper.pixelplay.presentation.viewmodel.WearBrowseViewModel
+import com.theveloper.pixelplay.presentation.theme.LocalWearPalette
 import com.theveloper.pixelplay.shared.WearBrowseRequest
 import com.theveloper.pixelplay.shared.WearLibraryItem
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ fun LibraryListScreen(
     viewModel: WearBrowseViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val palette = LocalWearPalette.current
 
     LaunchedEffect(browseType) {
         viewModel.loadItems(browseType)
@@ -56,9 +58,9 @@ fun LibraryListScreen(
 
     val background = Brush.radialGradient(
         colors = listOf(
-            Color(0xFF6C3AD8),
-            Color(0xFF2C1858),
-            Color(0xFF130B23),
+            palette.gradientTop,
+            palette.gradientMiddle,
+            palette.gradientBottom,
         ),
     )
 
@@ -71,7 +73,7 @@ fun LibraryListScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
-                    indicatorColor = Color(0xFFE1D5FF),
+                    indicatorColor = palette.textSecondary,
                 )
             }
         }
@@ -88,7 +90,7 @@ fun LibraryListScreen(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.title3,
-                        color = Color(0xFFF4EEFF),
+                        color = palette.textPrimary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -97,7 +99,7 @@ fun LibraryListScreen(
                     Text(
                         text = state.message,
                         style = MaterialTheme.typography.body2,
-                        color = Color(0xFFFFB7C5),
+                        color = palette.textError,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -106,18 +108,19 @@ fun LibraryListScreen(
                 }
                 item {
                     Chip(
-                        label = { Text("Retry", color = Color(0xFFF4EEFF)) },
+                        label = { Text("Retry", color = palette.textPrimary) },
                         icon = {
                             Icon(
                                 Icons.Rounded.Refresh,
                                 contentDescription = "Retry",
-                                tint = Color(0xFFE1D5FF),
+                                tint = palette.textSecondary,
                                 modifier = Modifier.size(18.dp),
                             )
                         },
                         onClick = { viewModel.refresh() },
                         colors = ChipDefaults.chipColors(
-                            backgroundColor = Color(0xFFD8CEF3).copy(alpha = 0.18f),
+                            backgroundColor = palette.chipContainer,
+                            contentColor = palette.chipContent,
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -139,7 +142,7 @@ fun LibraryListScreen(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.title3,
-                        color = Color(0xFFF4EEFF),
+                        color = palette.textPrimary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -152,7 +155,7 @@ fun LibraryListScreen(
                         Text(
                             text = "No items",
                             style = MaterialTheme.typography.body2,
-                            color = Color(0xFFE1D5FF).copy(alpha = 0.6f),
+                            color = palette.textSecondary.copy(alpha = 0.7f),
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -188,6 +191,7 @@ private fun LibraryItemChip(
     browseType: String,
     onClick: () -> Unit,
 ) {
+    val palette = LocalWearPalette.current
     val icon = when (browseType) {
         WearBrowseRequest.ALBUMS -> Icons.Rounded.Album
         WearBrowseRequest.ARTISTS -> Icons.Rounded.Person
@@ -196,10 +200,10 @@ private fun LibraryItemChip(
     }
 
     val iconTint = when (browseType) {
-        WearBrowseRequest.ALBUMS -> Color(0xFF70A6FF)
-        WearBrowseRequest.ARTISTS -> Color(0xFFFFB74D)
-        WearBrowseRequest.PLAYLISTS -> Color(0xFF44CDC4)
-        else -> Color(0xFFE1D5FF)
+        WearBrowseRequest.ALBUMS -> palette.repeatActive
+        WearBrowseRequest.ARTISTS -> palette.textSecondary
+        WearBrowseRequest.PLAYLISTS -> palette.shuffleActive
+        else -> palette.textSecondary
     }
 
     Chip(
@@ -208,7 +212,7 @@ private fun LibraryItemChip(
                 text = item.title,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = Color(0xFFF4EEFF),
+                color = palette.textPrimary,
             )
         },
         secondaryLabel = if (item.subtitle.isNotEmpty()) {
@@ -217,7 +221,7 @@ private fun LibraryItemChip(
                     text = item.subtitle,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = Color(0xFFE1D5FF).copy(alpha = 0.7f),
+                    color = palette.textSecondary.copy(alpha = 0.78f),
                 )
             }
         } else null,
@@ -231,7 +235,8 @@ private fun LibraryItemChip(
         },
         onClick = onClick,
         colors = ChipDefaults.chipColors(
-            backgroundColor = Color(0xFFD8CEF3).copy(alpha = 0.14f),
+            backgroundColor = palette.chipContainer,
+            contentColor = palette.chipContent,
         ),
         modifier = Modifier.fillMaxWidth(),
     )
