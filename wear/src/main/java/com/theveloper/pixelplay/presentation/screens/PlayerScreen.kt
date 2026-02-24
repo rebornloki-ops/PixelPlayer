@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -65,14 +64,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.wear.compose.material.HorizontalPageIndicator
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
-import androidx.wear.compose.material.PageIndicatorState
-import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Text
 import com.google.android.horologist.compose.layout.ScalingLazyColumn
 import com.google.android.horologist.compose.layout.rememberResponsiveColumnState
+import com.theveloper.pixelplay.presentation.components.AlwaysOnScalingPositionIndicator
 import com.theveloper.pixelplay.presentation.shapes.RoundedStarShape
 import com.theveloper.pixelplay.presentation.theme.LocalWearPalette
 import com.theveloper.pixelplay.presentation.viewmodel.WearPlayerViewModel
@@ -130,16 +127,6 @@ private fun PlayerContent(
     )
 
     val pagerState = rememberPagerState(pageCount = { 2 })
-    val pageIndicatorState: PageIndicatorState = remember(pagerState) {
-        object : PageIndicatorState {
-            override val pageOffset: Float
-                get() = pagerState.currentPageOffsetFraction
-            override val selectedPage: Int
-                get() = pagerState.currentPage
-            override val pageCount: Int
-                get() = pagerState.pageCount
-        }
-    }
 
     Box(
         modifier = Modifier
@@ -176,13 +163,12 @@ private fun PlayerContent(
             }
         }
 
-        HorizontalPageIndicator(
-            pageIndicatorState = pageIndicatorState,
-            selectedColor = palette.textPrimary,
-            unselectedColor = palette.textPrimary.copy(alpha = 0.35f),
+        PagerDotsIndicator(
+            pageCount = pagerState.pageCount,
+            selectedPage = pagerState.currentPage,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 4.dp),
+                .padding(bottom = 8.dp),
         )
     }
 }
@@ -292,8 +278,9 @@ private fun MainPlayerPage(
             }
         }
 
-        PositionIndicator(
-            scalingLazyListState = columnState.state,
+        AlwaysOnScalingPositionIndicator(
+            listState = columnState.state,
+            color = palette.textPrimary,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 2.dp, bottom = 8.dp),
@@ -403,7 +390,7 @@ private fun FlattenedControlButton(
     Box(
         modifier = Modifier
             .size(width = width, height = height)
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(18.dp))
             .background(container)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -679,6 +666,40 @@ private fun UtilityPillButton(
             style = MaterialTheme.typography.button,
             maxLines = 1,
         )
+    }
+}
+
+@Composable
+private fun PagerDotsIndicator(
+    pageCount: Int,
+    selectedPage: Int,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalWearPalette.current
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(pageCount) { index ->
+            val selected = index == selectedPage
+            val dotColor by animateColorAsState(
+                targetValue = if (selected) palette.textPrimary else palette.textPrimary.copy(alpha = 0.38f),
+                animationSpec = tween(durationMillis = 160),
+                label = "pagerDotColor",
+            )
+            val dotSize by animateDpAsState(
+                targetValue = if (selected) 8.dp else 6.dp,
+                animationSpec = tween(durationMillis = 160),
+                label = "pagerDotSize",
+            )
+            Box(
+                modifier = Modifier
+                    .size(dotSize)
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(dotColor),
+            )
+        }
     }
 }
 

@@ -26,6 +26,7 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.google.android.horologist.compose.layout.ScalingLazyColumn
 import com.google.android.horologist.compose.layout.rememberResponsiveColumnState
+import com.theveloper.pixelplay.presentation.components.AlwaysOnScalingPositionIndicator
 import com.theveloper.pixelplay.presentation.viewmodel.BrowseUiState
 import com.theveloper.pixelplay.presentation.viewmodel.WearBrowseViewModel
 import com.theveloper.pixelplay.presentation.theme.LocalWearPalette
@@ -80,106 +81,130 @@ fun LibraryListScreen(
 
         is BrowseUiState.Error -> {
             val columnState = rememberResponsiveColumnState()
-            ScalingLazyColumn(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(background),
-                columnState = columnState,
             ) {
-                item {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.title3,
-                        color = palette.textPrimary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                item {
-                    Text(
-                        text = state.message,
-                        style = MaterialTheme.typography.body2,
-                        color = palette.textError,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                    )
-                }
-                item {
-                    Chip(
-                        label = { Text("Retry", color = palette.textPrimary) },
-                        icon = {
-                            Icon(
-                                Icons.Rounded.Refresh,
-                                contentDescription = "Retry",
-                                tint = palette.textSecondary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                        onClick = { viewModel.refresh() },
-                        colors = ChipDefaults.chipColors(
-                            backgroundColor = palette.chipContainer,
-                            contentColor = palette.chipContent,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                    )
-                }
-            }
-        }
-
-        is BrowseUiState.Success -> {
-            val columnState = rememberResponsiveColumnState()
-            ScalingLazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(background),
-                columnState = columnState,
-            ) {
-                item {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.title3,
-                        color = palette.textPrimary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 2.dp),
-                    )
-                }
-
-                if (state.items.isEmpty()) {
+                ScalingLazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    columnState = columnState,
+                ) {
                     item {
                         Text(
-                            text = "No items",
+                            text = title,
+                            style = MaterialTheme.typography.title3,
+                            color = palette.textPrimary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    item {
+                        Text(
+                            text = state.message,
                             style = MaterialTheme.typography.body2,
-                            color = palette.textSecondary.copy(alpha = 0.7f),
+                            color = palette.textError,
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 8.dp),
                         )
                     }
-                } else {
-                    items(state.items.size) { index ->
-                        val item = state.items[index]
-                        LibraryItemChip(
-                            item = item,
-                            browseType = browseType,
-                            onClick = {
-                                val subBrowseType = when (browseType) {
-                                    WearBrowseRequest.ALBUMS -> WearBrowseRequest.ALBUM_SONGS
-                                    WearBrowseRequest.ARTISTS -> WearBrowseRequest.ARTIST_SONGS
-                                    WearBrowseRequest.PLAYLISTS -> WearBrowseRequest.PLAYLIST_SONGS
-                                    else -> browseType
-                                }
-                                onItemClick(item, subBrowseType, item.title)
+                    item {
+                        Chip(
+                            label = { Text("Retry", color = palette.textPrimary) },
+                            icon = {
+                                Icon(
+                                    Icons.Rounded.Refresh,
+                                    contentDescription = "Retry",
+                                    tint = palette.textSecondary,
+                                    modifier = Modifier.size(18.dp),
+                                )
                             },
+                            onClick = { viewModel.refresh() },
+                            colors = ChipDefaults.chipColors(
+                                backgroundColor = palette.chipContainer,
+                                contentColor = palette.chipContent,
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
                         )
                     }
                 }
+
+                AlwaysOnScalingPositionIndicator(
+                    listState = columnState.state,
+                    color = palette.textPrimary,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 2.dp, bottom = 8.dp),
+                )
+            }
+        }
+
+        is BrowseUiState.Success -> {
+            val columnState = rememberResponsiveColumnState()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(background),
+            ) {
+                ScalingLazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    columnState = columnState,
+                ) {
+                    item {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.title3,
+                            color = palette.textPrimary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 2.dp),
+                        )
+                    }
+
+                    if (state.items.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No items",
+                                style = MaterialTheme.typography.body2,
+                                color = palette.textSecondary.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                            )
+                        }
+                    } else {
+                        items(state.items.size) { index ->
+                            val item = state.items[index]
+                            LibraryItemChip(
+                                item = item,
+                                browseType = browseType,
+                                onClick = {
+                                    val subBrowseType = when (browseType) {
+                                        WearBrowseRequest.ALBUMS -> WearBrowseRequest.ALBUM_SONGS
+                                        WearBrowseRequest.ARTISTS -> WearBrowseRequest.ARTIST_SONGS
+                                        WearBrowseRequest.PLAYLISTS -> WearBrowseRequest.PLAYLIST_SONGS
+                                        else -> browseType
+                                    }
+                                    onItemClick(item, subBrowseType, item.title)
+                                },
+                            )
+                        }
+                    }
+                }
+
+                AlwaysOnScalingPositionIndicator(
+                    listState = columnState.state,
+                    color = palette.textPrimary,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 2.dp, bottom = 8.dp),
+                )
             }
         }
     }

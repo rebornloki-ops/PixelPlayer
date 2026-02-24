@@ -1,11 +1,13 @@
 package com.theveloper.pixelplay.presentation.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.theveloper.pixelplay.presentation.components.AlwaysOnScalingPositionIndicator
 import com.theveloper.pixelplay.presentation.theme.LocalWearPalette
 
 /**
@@ -47,68 +50,80 @@ fun BrowseScreen(
         ),
     )
 
-    ScalingLazyColumn(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(background),
-        columnState = columnState,
     ) {
-        item {
-            Text(
-                text = "Library",
-                style = MaterialTheme.typography.title2,
-                color = palette.textPrimary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 4.dp),
-            )
+        ScalingLazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            columnState = columnState,
+        ) {
+            item {
+                Text(
+                    text = "Library",
+                    style = MaterialTheme.typography.title2,
+                    color = palette.textPrimary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                )
+            }
+
+            item {
+                BrowseCategoryChip(
+                    label = "Favorites",
+                    icon = Icons.Rounded.Favorite,
+                    iconTint = palette.favoriteActive,
+                    onClick = { onCategoryClick("favorites", "Favorites") },
+                )
+            }
+
+            item {
+                BrowseCategoryChip(
+                    label = "Playlists",
+                    icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                    iconTint = palette.shuffleActive,
+                    onClick = { onCategoryClick("playlists", "Playlists") },
+                )
+            }
+
+            item {
+                BrowseCategoryChip(
+                    label = "Albums",
+                    icon = Icons.Rounded.Album,
+                    iconTint = palette.repeatActive,
+                    onClick = { onCategoryClick("albums", "Albums") },
+                )
+            }
+
+            item {
+                BrowseCategoryChip(
+                    label = "Artists",
+                    icon = Icons.Rounded.Person,
+                    iconTint = palette.textSecondary,
+                    onClick = { onCategoryClick("artists", "Artists") },
+                )
+            }
+
+            item {
+                BrowseCategoryChip(
+                    label = "All Songs",
+                    icon = Icons.Rounded.MusicNote,
+                    iconTint = palette.textSecondary,
+                    onClick = { onCategoryClick("all_songs", "All Songs") },
+                )
+            }
         }
 
-        item {
-            BrowseCategoryChip(
-                label = "Favorites",
-                icon = Icons.Rounded.Favorite,
-                iconTint = palette.favoriteActive,
-                onClick = { onCategoryClick("favorites", "Favorites") },
-            )
-        }
-
-        item {
-            BrowseCategoryChip(
-                label = "Playlists",
-                icon = Icons.AutoMirrored.Rounded.QueueMusic,
-                iconTint = palette.shuffleActive,
-                onClick = { onCategoryClick("playlists", "Playlists") },
-            )
-        }
-
-        item {
-            BrowseCategoryChip(
-                label = "Albums",
-                icon = Icons.Rounded.Album,
-                iconTint = palette.repeatActive,
-                onClick = { onCategoryClick("albums", "Albums") },
-            )
-        }
-
-        item {
-            BrowseCategoryChip(
-                label = "Artists",
-                icon = Icons.Rounded.Person,
-                iconTint = palette.textSecondary,
-                onClick = { onCategoryClick("artists", "Artists") },
-            )
-        }
-
-        item {
-            BrowseCategoryChip(
-                label = "All Songs",
-                icon = Icons.Rounded.MusicNote,
-                iconTint = palette.textSecondary,
-                onClick = { onCategoryClick("all_songs", "All Songs") },
-            )
-        }
+        AlwaysOnScalingPositionIndicator(
+            listState = columnState.state,
+            color = palette.textPrimary,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 2.dp, bottom = 8.dp),
+        )
     }
 }
 
