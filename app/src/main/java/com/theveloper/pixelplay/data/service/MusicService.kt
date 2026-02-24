@@ -241,7 +241,7 @@ class MusicService : MediaLibraryService() {
                         stopCountedPlay()
                     }
                     MusicNotificationProvider.CUSTOM_COMMAND_TOGGLE_SHUFFLE -> {
-                        val enabled = !session.player.shuffleModeEnabled
+                        val enabled = !isManualShuffleEnabled
                         updateManualShuffleState(session, enabled = enabled, broadcast = true)
                     }
                     MusicNotificationProvider.CUSTOM_COMMAND_SHUFFLE_ON -> {
@@ -469,7 +469,7 @@ class MusicService : MediaLibraryService() {
                     }
                 }
                 PlayerActions.SHUFFLE -> {
-                    val newState = !player.shuffleModeEnabled
+                    val newState = !isManualShuffleEnabled
                     mediaSession?.let { session ->
                         updateManualShuffleState(session, enabled = newState, broadcast = true)
                     }
@@ -526,7 +526,6 @@ class MusicService : MediaLibraryService() {
         override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
             Timber.tag("MusicService")
                 .d("playerListener.onShuffleModeEnabledChanged: $shuffleModeEnabled")
-            isManualShuffleEnabled = shuffleModeEnabled
             requestWidgetFullUpdate(force = true)
             mediaSession?.let { refreshMediaSessionUi(it) }
         }
@@ -627,7 +626,7 @@ class MusicService : MediaLibraryService() {
         val player = engine.masterPlayer
         val currentItem = withContext(Dispatchers.Main) { player.currentMediaItem }
         val isPlaying = withContext(Dispatchers.Main) { player.isPlaying }
-        val shuffleEnabled = withContext(Dispatchers.Main) { player.shuffleModeEnabled }
+        val shuffleEnabled = isManualShuffleEnabled
         val repeatMode = withContext(Dispatchers.Main) { player.repeatMode }
         val currentPosition = withContext(Dispatchers.Main) { player.currentPosition }
         val totalDuration = withContext(Dispatchers.Main) { player.duration.coerceAtLeast(0) }
@@ -949,7 +948,7 @@ class MusicService : MediaLibraryService() {
             .setSessionCommand(SessionCommand(MusicNotificationProvider.CUSTOM_COMMAND_LIKE, Bundle.EMPTY))
             .build()
 
-        val shuffleOn = player.shuffleModeEnabled
+        val shuffleOn = isManualShuffleEnabled
         val shuffleCommandAction = if (shuffleOn) {
             MusicNotificationProvider.CUSTOM_COMMAND_SHUFFLE_OFF
         } else {
