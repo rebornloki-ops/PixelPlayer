@@ -874,7 +874,6 @@ constructor(
         } else {
             // Find existing data for these songs to avoid unnecessary reprocessing
             // and to preserve user edits.
-            val totalInList = rawDataList.size
             val results = mutableListOf<RawSongData>()
             
             rawDataList.chunked(500).forEach { batch ->
@@ -890,6 +889,11 @@ constructor(
             }
             results
         }
+
+        // rawDataList is no longer needed — release its memory before the processing phase,
+        // which may allocate large existingMap objects and metadata ByteArrays.
+        @Suppress("UNUSED_VALUE")
+        rawDataList.clear()
 
         val totalCount = songsToProcess.size
         if (totalCount == 0) {
