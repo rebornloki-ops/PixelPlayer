@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Text
 import com.google.android.horologist.compose.layout.ScalingLazyColumn
 import com.google.android.horologist.compose.layout.rememberResponsiveColumnState
@@ -59,6 +61,7 @@ import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.ui.unit.sp
 import com.theveloper.pixelplay.presentation.theme.LocalWearPalette
 
 @Composable
@@ -100,7 +103,16 @@ private fun PlayerContent(
     onBrowseClick: () -> Unit,
     onVolumeClick: () -> Unit,
 ) {
-    val columnState = rememberResponsiveColumnState()
+    val columnState = rememberResponsiveColumnState(
+        contentPadding = {
+            PaddingValues(
+                start = 0.dp,
+                end = 0.dp,
+                top = 2.dp,
+                bottom = 10.dp,
+            )
+        },
+    )
     val palette = LocalWearPalette.current
     val background = Brush.radialGradient(
         colors = listOf(
@@ -110,82 +122,100 @@ private fun PlayerContent(
         ),
     )
 
-    ScalingLazyColumn(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(background)
-            .padding(horizontal = 6.dp),
-        columnState = columnState,
+            .background(background),
     ) {
-        item {
-            Text(
-                text = clock,
-                style = MaterialTheme.typography.body1,
-                color = palette.textPrimary,
-                modifier = Modifier.padding(top = 0.dp),
-            )
-        }
-
-        item {
-            HeaderBlock(
-                state = state,
-                isPhoneConnected = isPhoneConnected,
-            )
-        }
-
-        item { Spacer(modifier = Modifier.height(2.dp)) }
-
-        item {
-            MainControlsRow(
-                isPlaying = state.isPlaying,
-                isEmpty = state.isEmpty,
-                enabled = isPhoneConnected,
-                onTogglePlayPause = onTogglePlayPause,
-                onNext = onNext,
-                onPrevious = onPrevious,
-            )
-        }
-
-        item { Spacer(modifier = Modifier.height(6.dp)) }
-
-        item {
-            SecondaryControlsRow(
-                isFavorite = state.isFavorite,
-                isShuffleEnabled = state.isShuffleEnabled,
-                repeatMode = state.repeatMode,
-                enabled = isPhoneConnected && !state.isEmpty,
-                onToggleFavorite = onToggleFavorite,
-                onToggleShuffle = onToggleShuffle,
-                onCycleRepeat = onCycleRepeat,
-                favoriteActiveColor = palette.favoriteActive,
-                shuffleActiveColor = palette.shuffleActive,
-                repeatActiveColor = palette.repeatActive,
-            )
-        }
-
-        item { Spacer(modifier = Modifier.height(2.dp)) }
-
-        item {
-            UtilityActionRow(
-                enabled = true,
-                onBrowseClick = onBrowseClick,
-                onVolumeClick = onVolumeClick,
-            )
-        }
-
-        if (!isPhoneConnected) {
+        ScalingLazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 6.dp),
+            columnState = columnState,
+        ) {
             item {
                 Text(
-                    text = "Phone disconnected",
-                    style = MaterialTheme.typography.body2,
-                    color = palette.textError,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
+                    text = clock,
+                    style = MaterialTheme.typography.body1.copy(
+                        fontSize = 20.sp
+                    ),
+                    color = palette.textPrimary,
+                    modifier = Modifier.padding(top = 0.dp),
                 )
             }
+
+            item {
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            item {
+                HeaderBlock(
+                    state = state,
+                    isPhoneConnected = isPhoneConnected,
+                )
+            }
+
+            item { Spacer(modifier = Modifier.height(2.dp)) }
+
+            item {
+                MainControlsRow(
+                    isPlaying = state.isPlaying,
+                    isEmpty = state.isEmpty,
+                    enabled = isPhoneConnected,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onNext = onNext,
+                    onPrevious = onPrevious,
+                )
+            }
+
+            item { Spacer(modifier = Modifier.height(6.dp)) }
+
+            item {
+                SecondaryControlsRow(
+                    isFavorite = state.isFavorite,
+                    isShuffleEnabled = state.isShuffleEnabled,
+                    repeatMode = state.repeatMode,
+                    enabled = isPhoneConnected && !state.isEmpty,
+                    onToggleFavorite = onToggleFavorite,
+                    onToggleShuffle = onToggleShuffle,
+                    onCycleRepeat = onCycleRepeat,
+                    favoriteActiveColor = palette.favoriteActive,
+                    shuffleActiveColor = palette.shuffleActive,
+                    repeatActiveColor = palette.repeatActive,
+                )
+            }
+
+            item { Spacer(modifier = Modifier.height(2.dp)) }
+
+            item {
+                UtilityActionRow(
+                    enabled = true,
+                    onBrowseClick = onBrowseClick,
+                    onVolumeClick = onVolumeClick,
+                )
+            }
+
+            if (!isPhoneConnected) {
+                item {
+                    Text(
+                        text = "Phone disconnected",
+                        style = MaterialTheme.typography.body2,
+                        color = palette.textError,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                    )
+                }
+            }
         }
+
+        PositionIndicator(
+            scalingLazyListState = columnState.state,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 2.dp),
+        )
     }
 }
 
@@ -198,7 +228,7 @@ private fun HeaderBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
