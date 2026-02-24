@@ -12,12 +12,10 @@ import coil.request.ImageRequest
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
-class CoilBitmapLoader(private val context: Context) : BitmapLoader {
-    private val scope = CoroutineScope(Dispatchers.IO)
+class CoilBitmapLoader(private val context: Context, private val scope: CoroutineScope) : BitmapLoader {
 
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> {
         return loadBitmapInternal(uri)
@@ -42,7 +40,12 @@ class CoilBitmapLoader(private val context: Context) : BitmapLoader {
                 val drawable = result.drawable
                 
                 if (drawable != null) {
-                    val bitmap = drawable.toBitmap()
+                    // Copy the bitmap so Media3 has exclusive ownership independent of
+                    // Coil's memory cache. Without this, Coil can recycle the cached
+                    // bitmap while Media3 is still using it for MediaSession metadata IPC,
+                    // causing "Can't copy a recycled bitmap" crashes.
+                    val src = drawable.toBitmap()
+                    val bitmap = src.copy(src.config ?: Bitmap.Config.ARGB_8888, false)
                     future.set(bitmap)
                 } else {
                     future.setException(IllegalStateException("Coil returned null drawable for data: $data"))
