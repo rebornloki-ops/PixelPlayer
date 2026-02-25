@@ -2,8 +2,10 @@ package com.theveloper.pixelplay.presentation.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -17,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
@@ -27,6 +30,7 @@ import androidx.wear.compose.material.Text
 import com.google.android.horologist.compose.layout.ScalingLazyColumn
 import com.google.android.horologist.compose.layout.rememberResponsiveColumnState
 import com.theveloper.pixelplay.presentation.components.AlwaysOnScalingPositionIndicator
+import com.theveloper.pixelplay.presentation.components.WearTopTimeText
 import com.theveloper.pixelplay.presentation.viewmodel.BrowseUiState
 import com.theveloper.pixelplay.presentation.viewmodel.WearBrowseViewModel
 import com.theveloper.pixelplay.presentation.theme.LocalWearPalette
@@ -76,6 +80,13 @@ fun LibraryListScreen(
                 CircularProgressIndicator(
                     indicatorColor = palette.textSecondary,
                 )
+
+                WearTopTimeText(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .zIndex(5f),
+                    color = palette.textPrimary,
+                )
             }
         }
 
@@ -90,6 +101,8 @@ fun LibraryListScreen(
                     modifier = Modifier.fillMaxSize(),
                     columnState = columnState,
                 ) {
+                    item { Spacer(modifier = Modifier.height(18.dp)) }
+
                     item {
                         Text(
                             text = title,
@@ -135,6 +148,14 @@ fun LibraryListScreen(
 
                 AlwaysOnScalingPositionIndicator(
                     listState = columnState.state,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                    color = palette.textPrimary,
+                )
+
+                WearTopTimeText(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .zIndex(5f),
                     color = palette.textPrimary,
                 )
             }
@@ -151,6 +172,8 @@ fun LibraryListScreen(
                     modifier = Modifier.fillMaxSize(),
                     columnState = columnState,
                 ) {
+                    item { Spacer(modifier = Modifier.height(18.dp)) }
+
                     item {
                         Text(
                             text = title,
@@ -197,6 +220,14 @@ fun LibraryListScreen(
 
                 AlwaysOnScalingPositionIndicator(
                     listState = columnState.state,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                    color = palette.textPrimary,
+                )
+
+                WearTopTimeText(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .zIndex(5f),
                     color = palette.textPrimary,
                 )
             }

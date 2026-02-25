@@ -58,6 +58,7 @@ dependencies {
 
     // Wear OS Compose
     implementation(libs.wear.compose.material)
+    implementation(libs.wear.compose.material3)
     implementation(libs.wear.compose.foundation)
     implementation(libs.wear.compose.navigation)
 
@@ -100,4 +101,12 @@ dependencies {
     // Material icons for Wear
     implementation(libs.androidx.material.icons.core)
     implementation(libs.androidx.material.icons.extended)
+
+    // Room (local database for transferred songs)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
+    // Media3 ExoPlayer (standalone local playback)
+    implementation(libs.androidx.media3.exoplayer)
 }

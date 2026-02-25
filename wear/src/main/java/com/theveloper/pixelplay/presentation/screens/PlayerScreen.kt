@@ -25,10 +25,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -43,13 +43,15 @@ import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -57,41 +59,46 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.wear.compose.foundation.pager.HorizontalPager
+import androidx.wear.compose.foundation.pager.rememberPagerState
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import androidx.wear.compose.material3.ButtonDefaults as M3ButtonDefaults
+import androidx.wear.compose.material3.EdgeButton
+import androidx.wear.compose.material3.EdgeButtonSize
+import androidx.wear.compose.material3.HorizontalPageIndicator as M3HorizontalPageIndicator
+import androidx.wear.compose.material3.Icon as M3Icon
 import com.google.android.horologist.compose.layout.ScalingLazyColumn
 import com.google.android.horologist.compose.layout.rememberResponsiveColumnState
 import com.theveloper.pixelplay.presentation.components.AlwaysOnScalingPositionIndicator
-import com.theveloper.pixelplay.presentation.components.CurvedPagerIndicator
+import com.theveloper.pixelplay.presentation.components.WearTopTimeText
 import com.theveloper.pixelplay.presentation.shapes.RoundedStarShape
 import com.theveloper.pixelplay.presentation.theme.LocalWearPalette
 import com.theveloper.pixelplay.presentation.viewmodel.WearPlayerViewModel
 import com.theveloper.pixelplay.shared.WearPlayerState
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
-import kotlinx.coroutines.delay
 
 @Composable
 fun PlayerScreen(
     onBrowseClick: () -> Unit = {},
     onVolumeClick: () -> Unit = {},
+    onQueueClick: () -> Unit = onBrowseClick,
     viewModel: WearPlayerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.playerState.collectAsState()
     val isPhoneConnected by viewModel.isPhoneConnected.collectAsState()
-    val clock = rememberClockLabel()
 
     PlayerContent(
-        clock = clock,
         state = state,
         isPhoneConnected = isPhoneConnected,
         onTogglePlayPause = viewModel::togglePlayPause,
@@ -102,12 +109,12 @@ fun PlayerScreen(
         onCycleRepeat = viewModel::cycleRepeat,
         onBrowseClick = onBrowseClick,
         onVolumeClick = onVolumeClick,
+        onQueueClick = onQueueClick,
     )
 }
 
 @Composable
 private fun PlayerContent(
-    clock: String,
     state: WearPlayerState,
     isPhoneConnected: Boolean,
     onTogglePlayPause: () -> Unit,
@@ -118,6 +125,7 @@ private fun PlayerContent(
     onCycleRepeat: () -> Unit,
     onBrowseClick: () -> Unit,
     onVolumeClick: () -> Unit,
+    onQueueClick: () -> Unit,
 ) {
     val palette = LocalWearPalette.current
     val background = Brush.radialGradient(
@@ -129,6 +137,8 @@ private fun PlayerContent(
     )
 
     val pagerState = rememberPagerState(pageCount = { 2 })
+    var mainPageQueueReveal by remember { mutableFloatStateOf(0f) }
+    val hidePageIndicator = pagerState.currentPage == 0 && mainPageQueueReveal > 0.05f
 
     Box(
         modifier = Modifier
@@ -143,7 +153,6 @@ private fun PlayerContent(
             when (page) {
                 0 -> {
                     MainPlayerPage(
-                        clock = clock,
                         state = state,
                         isPhoneConnected = isPhoneConnected,
                         onTogglePlayPause = onTogglePlayPause,
@@ -152,6 +161,8 @@ private fun PlayerContent(
                         onToggleFavorite = onToggleFavorite,
                         onToggleShuffle = onToggleShuffle,
                         onCycleRepeat = onCycleRepeat,
+                        onQueueClick = onQueueClick,
+                        onQueueShortcutRevealChanged = { mainPageQueueReveal = it },
                     )
                 }
 
@@ -165,13 +176,23 @@ private fun PlayerContent(
             }
         }
 
-        CurvedPagerIndicator(
-            pageCount = pagerState.pageCount,
-            selectedPage = pagerState.currentPage,
+        if (!hidePageIndicator) {
+            M3HorizontalPageIndicator(
+                pagerState = pagerState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp)
+                    .zIndex(6f),
+                selectedColor = palette.textPrimary,
+                unselectedColor = palette.textPrimary.copy(alpha = 0.52f),
+                backgroundColor = Color.Transparent,
+            )
+        }
+
+        WearTopTimeText(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .zIndex(4f)
-                .padding(bottom = 8.dp),
+                .align(Alignment.TopCenter)
+                .zIndex(5f),
             color = palette.textPrimary,
         )
     }
@@ -179,7 +200,6 @@ private fun PlayerContent(
 
 @Composable
 private fun MainPlayerPage(
-    clock: String,
     state: WearPlayerState,
     isPhoneConnected: Boolean,
     onTogglePlayPause: () -> Unit,
@@ -188,6 +208,8 @@ private fun MainPlayerPage(
     onToggleFavorite: () -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
+    onQueueClick: () -> Unit,
+    onQueueShortcutRevealChanged: (Float) -> Unit,
 ) {
     val palette = LocalWearPalette.current
     val columnState = rememberResponsiveColumnState(
@@ -211,6 +233,35 @@ private fun MainPlayerPage(
         animationSpec = tween(durationMillis = 280),
         label = "trackProgress",
     )
+    val queueShortcutRevealTarget by remember(columnState.state) {
+        derivedStateOf {
+            val layoutInfo = columnState.state.layoutInfo
+            val totalItems = layoutInfo.totalItemsCount
+            if (totalItems <= 1) return@derivedStateOf 0f
+            val visibleItems = layoutInfo.visibleItemsInfo
+            if (visibleItems.isEmpty()) return@derivedStateOf 0f
+
+            val firstVisibleIndex = visibleItems.minOf { it.index }
+            val lastVisibleIndex = visibleItems.maxOf { it.index }
+            val visibleCount = (lastVisibleIndex - firstVisibleIndex + 1).coerceAtLeast(1)
+            val maxFirstVisibleIndex = (totalItems - visibleCount).coerceAtLeast(0)
+            if (maxFirstVisibleIndex == 0) return@derivedStateOf 0f
+
+            if (lastVisibleIndex >= totalItems - 1) {
+                1f
+            } else {
+                (firstVisibleIndex.toFloat() / maxFirstVisibleIndex.toFloat()).coerceIn(0f, 1f)
+            }
+        }
+    }
+    val queueShortcutReveal by animateFloatAsState(
+        targetValue = queueShortcutRevealTarget,
+        animationSpec = tween(durationMillis = 220),
+        label = "queueShortcutReveal",
+    )
+    LaunchedEffect(queueShortcutReveal) {
+        onQueueShortcutRevealChanged(queueShortcutReveal)
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ScalingLazyColumn(
@@ -219,15 +270,7 @@ private fun MainPlayerPage(
                 .padding(horizontal = 6.dp),
             columnState = columnState,
         ) {
-            item {
-                Text(
-                    text = clock,
-                    style = MaterialTheme.typography.body1.copy(fontSize = 20.sp),
-                    color = palette.textPrimary,
-                )
-            }
-
-            item { Spacer(modifier = Modifier.height(10.dp)) }
+            item { Spacer(modifier = Modifier.height(24.dp)) }
 
             item {
                 HeaderBlock(
@@ -250,7 +293,7 @@ private fun MainPlayerPage(
                 )
             }
 
-            item { Spacer(modifier = Modifier.height(8.dp)) }
+            //item { Spacer(modifier = Modifier.height(8.dp)) }
 
             item {
                 SecondaryControlsRow(
@@ -267,23 +310,20 @@ private fun MainPlayerPage(
                 )
             }
 
-            if (!isPhoneConnected) {
-                item {
-                    Text(
-                        text = "Phone disconnected",
-                        style = MaterialTheme.typography.body2,
-                        color = palette.textError,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp),
-                    )
-                }
-            }
+            item { Spacer(modifier = Modifier.height(50.dp)) }
         }
+
+        BottomQueueShortcut(
+            revealProgress = queueShortcutReveal,
+            enabled = isPhoneConnected,
+            onClick = onQueueClick,
+            modifier = Modifier
+                .align(Alignment.BottomCenter),
+        )
 
         AlwaysOnScalingPositionIndicator(
             listState = columnState.state,
+            modifier = Modifier.align(Alignment.CenterEnd),
             color = palette.textPrimary,
         )
     }
@@ -298,12 +338,12 @@ private fun HeaderBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = state.songTitle.ifEmpty { "Song name" },
-            style = MaterialTheme.typography.title2,
+            style = MaterialTheme.typography.body1,
             fontWeight = FontWeight.SemiBold,
             color = palette.textPrimary,
             maxLines = 1,
@@ -353,7 +393,7 @@ private fun MainControlsRow(
             height = 54.dp,
         )
 
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
         CenterPlayButton(
             isPlaying = isPlaying,
@@ -362,7 +402,7 @@ private fun MainControlsRow(
             onClick = onTogglePlayPause,
         )
 
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
         FlattenedControlButton(
             icon = Icons.Rounded.SkipNext,
@@ -391,7 +431,7 @@ private fun FlattenedControlButton(
     Box(
         modifier = Modifier
             .size(width = width, height = height)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(CircleShape)
             .background(container)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -523,34 +563,43 @@ private fun SecondaryControlsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(
+            space = 10.dp,
+            alignment = Alignment.CenterHorizontally,
+        ),
+        verticalAlignment = Alignment.Top,
     ) {
-        SecondaryActionButton(
-            icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-            enabled = enabled,
-            active = isFavorite,
-            activeColor = favoriteActiveColor,
-            onClick = onToggleFavorite,
-            contentDescription = "Like",
-        )
-        SecondaryActionButton(
-            icon = Icons.Rounded.Shuffle,
-            enabled = enabled,
-            active = isShuffleEnabled,
-            activeColor = shuffleActiveColor,
-            onClick = onToggleShuffle,
-            contentDescription = "Shuffle",
-        )
-        SecondaryActionButton(
-            icon = if (repeatMode == 1) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-            enabled = enabled,
-            active = repeatMode != 0,
-            activeColor = repeatActiveColor,
-            onClick = onCycleRepeat,
-            contentDescription = "Repeat",
-        )
+        SecondaryActionSlot(lower = false) {
+            SecondaryActionButton(
+                icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                enabled = enabled,
+                active = isFavorite,
+                activeColor = favoriteActiveColor,
+                onClick = onToggleFavorite,
+                contentDescription = "Like",
+            )
+        }
+        SecondaryActionSlot(lower = true) {
+            SecondaryActionButton(
+                icon = Icons.Rounded.Shuffle,
+                enabled = enabled,
+                active = isShuffleEnabled,
+                activeColor = shuffleActiveColor,
+                onClick = onToggleShuffle,
+                contentDescription = "Shuffle",
+            )
+        }
+        SecondaryActionSlot(lower = false) {
+            SecondaryActionButton(
+                icon = if (repeatMode == 1) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                enabled = enabled,
+                active = repeatMode != 0,
+                activeColor = repeatActiveColor,
+                onClick = onCycleRepeat,
+                contentDescription = "Repeat",
+            )
+        }
     }
 }
 
@@ -585,8 +634,8 @@ private fun SecondaryActionButton(
 
     Box(
         modifier = Modifier
-            .size(width = 54.dp, height = 42.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .size(width = 48.dp, height = 36.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(container)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -595,7 +644,72 @@ private fun SecondaryActionButton(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = tint,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(21.dp),
+        )
+    }
+}
+
+@Composable
+private fun SecondaryActionSlot(
+    lower: Boolean,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(width = 48.dp, height = 48.dp),
+        contentAlignment = if (lower) Alignment.BottomCenter else Alignment.TopCenter,
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun BottomQueueShortcut(
+    revealProgress: Float,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalWearPalette.current
+    val clampedProgress = revealProgress.coerceIn(0f, 1f)
+    if (clampedProgress <= 0.01f) return
+
+    val containerColor by animateColorAsState(
+        targetValue = if (enabled) palette.chipContainer else palette.controlDisabledContainer.copy(alpha = 0.5f),
+        animationSpec = spring(),
+        label = "queueShortcutContainer",
+    )
+    val iconColor by animateColorAsState(
+        targetValue = if (enabled) palette.chipContent else palette.controlDisabledContent,
+        animationSpec = spring(),
+        label = "queueShortcutIcon",
+    )
+
+    val edgeHeight = lerp(16.dp, 66.dp, clampedProgress)
+    val iconSize = lerp(14.dp, 24.dp, clampedProgress)
+    val containerAlpha = (clampedProgress * 1.1f).coerceIn(0f, 1f)
+
+    EdgeButton(
+        onClick = onClick,
+        enabled = enabled && clampedProgress > 0.65f,
+        buttonSize = EdgeButtonSize.Small,
+        colors = M3ButtonDefaults.buttonColors(
+            containerColor = containerColor,
+            contentColor = iconColor,
+            disabledContainerColor = containerColor,
+            disabledContentColor = iconColor,
+        ),
+        modifier = modifier
+            .height(edgeHeight)
+            .graphicsLayer {
+                alpha = containerAlpha
+                scaleY = 0.55f + (0.45f * clampedProgress)
+                transformOrigin = TransformOrigin(0.5f, 1f)
+            },
+    ) {
+        M3Icon(
+            imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+            contentDescription = "Queue",
+            modifier = Modifier.size(iconSize),
         )
     }
 }
@@ -668,17 +782,4 @@ private fun UtilityPillButton(
             maxLines = 1,
         )
     }
-}
-
-@Composable
-private fun rememberClockLabel(): String {
-    val formatter = remember { DateTimeFormatter.ofPattern("H:mm") }
-    var value by remember { mutableStateOf(LocalTime.now().format(formatter)) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            value = LocalTime.now().format(formatter)
-            delay(15_000L)
-        }
-    }
-    return value
 }

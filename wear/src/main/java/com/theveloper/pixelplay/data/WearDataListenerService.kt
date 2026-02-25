@@ -3,6 +3,7 @@ package com.theveloper.pixelplay.data
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.SystemClock
+import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMap
@@ -14,6 +15,8 @@ import com.theveloper.pixelplay.presentation.WearMainActivity
 import com.theveloper.pixelplay.shared.WearBrowseResponse
 import com.theveloper.pixelplay.shared.WearDataPaths
 import com.theveloper.pixelplay.shared.WearPlayerState
+import com.theveloper.pixelplay.shared.WearTransferMetadata
+import com.theveloper.pixelplay.shared.WearTransferProgress
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,12 +26,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.Json
 import timber.log.Timber
+import java.nio.ByteBuffer
 import javax.inject.Inject
 
 /**
- * Listens for DataItem changes from the phone app via the Wear Data Layer.
- * When the phone publishes a new player state, this service deserializes it
- * and updates the WearStateRepository.
+ * Listens for DataItem changes, MessageClient messages, and ChannelClient events
+ * from the phone app via the Wear Data Layer.
+ *
+ * Handles:
+ * - Player state updates (DataItem)
+ * - Browse responses (MessageClient)
+ * - Transfer metadata and progress (MessageClient)
+ * - Audio file streaming (ChannelClient)
  */
 @AndroidEntryPoint
 class WearDataListenerService : WearableListenerService() {
@@ -38,6 +47,9 @@ class WearDataListenerService : WearableListenerService() {
 
     @Inject
     lateinit var libraryRepository: WearLibraryRepository
+
+    @Inject
+    lateinit var transferRepository: WearTransferRepository
 
     private val json = Json { ignoreUnknownKeys = true }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -166,8 +178,7 @@ class WearDataListenerService : WearableListenerService() {
     }
 
     /**
-     * Receives message responses from the phone (e.g., browse responses).
-     * DataItem changes are handled by [onDataChanged]; this handles MessageClient responses.
+     * Receives message responses from the phone (browse responses, transfer metadata/progress).
      */
     override fun onMessageReceived(messageEvent: MessageEvent) {
         when (messageEvent.path) {
@@ -184,8 +195,81 @@ class WearDataListenerService : WearableListenerService() {
                     Timber.tag(TAG).e(e, "Failed to process browse response")
                 }
             }
+
+            WearDataPaths.TRANSFER_METADATA -> {
+                try {
+                    val metadataJson = String(messageEvent.data, Charsets.UTF_8)
+                    val metadata = json.decodeFromString<WearTransferMetadata>(metadataJson)
+                    transferRepository.onMetadataReceived(metadata)
+                    Timber.tag(TAG).d(
+                        "Received transfer metadata: ${metadata.title}, " +
+                            "fileSize=${metadata.fileSize}, requestId=${metadata.requestId}"
+                    )
+                } catch (e: Exception) {
+                    Timber.tag(TAG).e(e, "Failed to process transfer metadata")
+                }
+            }
+
+            WearDataPaths.TRANSFER_PROGRESS -> {
+                try {
+                    val progressJson = String(messageEvent.data, Charsets.UTF_8)
+                    val progress = json.decodeFromString<WearTransferProgress>(progressJson)
+                    transferRepository.onProgressReceived(progress)
+                } catch (e: Exception) {
+                    Timber.tag(TAG).e(e, "Failed to process transfer progress")
+                }
+            }
+
             else -> {
                 Timber.tag(TAG).d("Ignoring message on path: ${messageEvent.path}")
+            }
+        }
+    }
+
+    /**
+     * Called when a ChannelClient channel is opened by the phone for audio file transfer.
+     * Reads the requestId header from the stream, then delegates to WearTransferRepository
+     * to write the audio data to local storage.
+     */
+    override fun onChannelOpened(channel: ChannelClient.Channel) {
+        if (channel.path != WearDataPaths.TRANSFER_CHANNEL) {
+            Timber.tag(TAG).d("Ignoring channel on path: ${channel.path}")
+            return
+        }
+
+        Timber.tag(TAG).d("Transfer channel opened")
+
+        scope.launch {
+            try {
+                val channelClient = Wearable.getChannelClient(this@WearDataListenerService)
+                val inputStream = channelClient.getInputStream(channel).await()
+
+                // Read header: requestId length (4 bytes big-endian) + requestId bytes
+                val lengthBytes = ByteArray(4)
+                var totalRead = 0
+                while (totalRead < 4) {
+                    val read = inputStream.read(lengthBytes, totalRead, 4 - totalRead)
+                    if (read == -1) throw Exception("Stream ended before requestId length")
+                    totalRead += read
+                }
+                val idLength = ByteBuffer.wrap(lengthBytes).int
+
+                val requestIdBytes = ByteArray(idLength)
+                totalRead = 0
+                while (totalRead < idLength) {
+                    val read = inputStream.read(requestIdBytes, totalRead, idLength - totalRead)
+                    if (read == -1) throw Exception("Stream ended before requestId")
+                    totalRead += read
+                }
+                val requestId = String(requestIdBytes, Charsets.UTF_8)
+
+                Timber.tag(TAG).d("Transfer channel: requestId=$requestId")
+
+                // Delegate to repository to write the audio data to disk
+                transferRepository.onChannelOpened(requestId, inputStream)
+
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "Failed to receive transfer channel")
             }
         }
     }

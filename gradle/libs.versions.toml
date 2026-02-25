@@ -98,8 +98,8 @@ profileinstaller = "1.4.1"
 pagingCommon = "3.3.6"
 
 # Wear OS
-horologist = "0.6.22"
-wearCompose = "1.4.1"
+horologist = "0.7.15"
+wearCompose = "1.6.0-alpha10"
 playServicesWearable = "19.0.0"
 
 [libraries]
@@ -226,6 +226,7 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 
 # Wear OS Compose
 wear-compose-material = { module = "androidx.wear.compose:compose-material", version.ref = "wearCompose" }
+wear-compose-material3 = { module = "androidx.wear.compose:compose-material3", version.ref = "wearCompose" }
 wear-compose-foundation = { module = "androidx.wear.compose:compose-foundation", version.ref = "wearCompose" }
 wear-compose-navigation = { module = "androidx.wear.compose:compose-navigation", version.ref = "wearCompose" }
 

@@ -1,0 +1,32 @@
+package com.theveloper.pixelplay.data.local
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * DAO for querying locally stored songs on the watch.
+ */
+@Dao
+interface LocalSongDao {
+
+    @Query("SELECT * FROM local_songs ORDER BY title ASC")
+    fun getAllSongs(): Flow<List<LocalSongEntity>>
+
+    @Query("SELECT * FROM local_songs WHERE songId = :songId")
+    suspend fun getSongById(songId: String): LocalSongEntity?
+
+    @Query("SELECT songId FROM local_songs")
+    fun getAllSongIds(): Flow<List<String>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(song: LocalSongEntity)
+
+    @Query("DELETE FROM local_songs WHERE songId = :songId")
+    suspend fun deleteById(songId: String)
+
+    @Query("SELECT SUM(fileSize) FROM local_songs")
+    suspend fun getTotalStorageUsed(): Long?
+}

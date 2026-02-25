@@ -6,6 +6,7 @@ import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import androidx.core.net.toUri
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
@@ -24,6 +25,9 @@ import com.theveloper.pixelplay.shared.WearBrowseResponse
 import com.theveloper.pixelplay.shared.WearDataPaths
 import com.theveloper.pixelplay.shared.WearLibraryItem
 import com.theveloper.pixelplay.shared.WearPlaybackCommand
+import com.theveloper.pixelplay.shared.WearTransferMetadata
+import com.theveloper.pixelplay.shared.WearTransferProgress
+import com.theveloper.pixelplay.shared.WearTransferRequest
 import com.theveloper.pixelplay.shared.WearVolumeCommand
 import com.theveloper.pixelplay.utils.MediaItemBuilder
 import dagger.hilt.android.AndroidEntryPoint
@@ -37,6 +41,11 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import timber.log.Timber
+import java.io.File
+import java.io.FileNotFoundException
+import java.io.InputStream
+import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 /**
@@ -59,11 +68,16 @@ class WearCommandReceiver : WearableListenerService() {
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** Set of requestIds that have been cancelled by the watch */
+    private val cancelledTransfers = ConcurrentHashMap.newKeySet<String>()
+
     companion object {
         private const val TAG = "WearCommandReceiver"
         private const val MAX_SONGS = 500
         private const val MAX_ALBUMS = 200
         private const val MAX_ARTISTS = 200
+        private const val TRANSFER_CHUNK_SIZE = 8192
+        private const val PROGRESS_UPDATE_INTERVAL_BYTES = 65536L
     }
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
@@ -73,6 +87,8 @@ class WearCommandReceiver : WearableListenerService() {
             WearDataPaths.PLAYBACK_COMMAND -> handlePlaybackCommand(messageEvent)
             WearDataPaths.VOLUME_COMMAND -> handleVolumeCommand(messageEvent)
             WearDataPaths.BROWSE_REQUEST -> handleBrowseRequest(messageEvent)
+            WearDataPaths.TRANSFER_REQUEST -> handleTransferRequest(messageEvent)
+            WearDataPaths.TRANSFER_CANCEL -> handleTransferCancel(messageEvent)
             else -> Timber.tag(TAG).w("Unknown message path: ${messageEvent.path}")
         }
     }
@@ -404,6 +420,284 @@ class WearCommandReceiver : WearableListenerService() {
                     0
                 )
             }
+        }
+    }
+
+    // ---- Transfer handling ----
+
+    private fun handleTransferRequest(messageEvent: MessageEvent) {
+        val requestJson = String(messageEvent.data, Charsets.UTF_8)
+        val request = try {
+            json.decodeFromString<WearTransferRequest>(requestJson)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to parse transfer request")
+            return
+        }
+
+        Timber.tag(TAG).d("Transfer request: songId=${request.songId}, requestId=${request.requestId}")
+
+        scope.launch {
+            try {
+                // 1. Find the song
+                val songs = musicRepository.getSongsByIds(listOf(request.songId)).first()
+                val song = songs.firstOrNull()
+
+                if (song == null) {
+                    sendTransferMetadataError(
+                        messageEvent.sourceNodeId, request.requestId, request.songId,
+                        "Song not found"
+                    )
+                    return@launch
+                }
+
+                // 2. Verify it's a local file (NOT cloud)
+                val isCloud = song.contentUriString.startsWith("telegram://") ||
+                    song.contentUriString.startsWith("netease://") ||
+                    song.contentUriString.startsWith("gdrive://")
+                if (isCloud) {
+                    sendTransferMetadataError(
+                        messageEvent.sourceNodeId, request.requestId, request.songId,
+                        "Cloud songs cannot be transferred"
+                    )
+                    return@launch
+                }
+
+                // 3. Open the file and get its size
+                val fileInputStream = openSongFile(song)
+                if (fileInputStream == null) {
+                    sendTransferMetadataError(
+                        messageEvent.sourceNodeId, request.requestId, request.songId,
+                        "Cannot read audio file"
+                    )
+                    return@launch
+                }
+
+                val fileSize = getSongFileSize(song)
+
+                // 4. Send metadata to watch
+                val metadata = WearTransferMetadata(
+                    requestId = request.requestId,
+                    songId = song.id,
+                    title = song.title,
+                    artist = song.displayArtist,
+                    album = song.album,
+                    albumId = song.albumId,
+                    duration = song.duration,
+                    mimeType = song.mimeType ?: "audio/mpeg",
+                    fileSize = fileSize,
+                    bitrate = song.bitrate ?: 0,
+                    sampleRate = song.sampleRate ?: 0,
+                )
+                val metadataBytes = json.encodeToString(metadata).toByteArray(Charsets.UTF_8)
+                val msgClient = Wearable.getMessageClient(this@WearCommandReceiver)
+                msgClient.sendMessage(
+                    messageEvent.sourceNodeId,
+                    WearDataPaths.TRANSFER_METADATA,
+                    metadataBytes,
+                ).await()
+
+                Timber.tag(TAG).d("Sent transfer metadata: ${song.title} ($fileSize bytes)")
+
+                // 5. Stream audio via ChannelClient
+                streamFileToWatch(
+                    messageEvent.sourceNodeId, request.requestId, song.id,
+                    fileInputStream, fileSize,
+                )
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "Failed to handle transfer request")
+                sendTransferProgress(
+                    messageEvent.sourceNodeId, request.requestId, request.songId,
+                    0, 0, WearTransferProgress.STATUS_FAILED, e.message,
+                )
+            }
+        }
+    }
+
+    private fun handleTransferCancel(messageEvent: MessageEvent) {
+        val requestJson = String(messageEvent.data, Charsets.UTF_8)
+        val request = try {
+            json.decodeFromString<WearTransferRequest>(requestJson)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to parse transfer cancel")
+            return
+        }
+        cancelledTransfers.add(request.requestId)
+        Timber.tag(TAG).d("Transfer cancelled: requestId=${request.requestId}")
+    }
+
+    /**
+     * Open a song's audio file, trying direct File access first,
+     * then falling back to ContentResolver.
+     */
+    private fun openSongFile(song: Song): InputStream? {
+        return try {
+            val file = File(song.path)
+            if (file.exists() && file.canRead()) {
+                file.inputStream()
+            } else {
+                contentResolver.openInputStream(song.contentUriString.toUri())
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Failed to open song file: ${song.path}")
+            try {
+                contentResolver.openInputStream(song.contentUriString.toUri())
+            } catch (e2: Exception) {
+                Timber.tag(TAG).e(e2, "ContentResolver fallback also failed")
+                null
+            }
+        }
+    }
+
+    /**
+     * Get the file size of a song, trying File.length() first,
+     * then ContentResolver.
+     */
+    private fun getSongFileSize(song: Song): Long {
+        val file = File(song.path)
+        if (file.exists()) return file.length()
+
+        // Fallback: query ContentResolver for size
+        return try {
+            contentResolver.openAssetFileDescriptor(song.contentUriString.toUri(), "r")?.use {
+                it.length
+            } ?: 0L
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
+    /**
+     * Stream an audio file to the watch via ChannelClient.
+     * The stream format is: [4 bytes requestId length][requestId bytes][audio data]
+     */
+    private suspend fun streamFileToWatch(
+        nodeId: String,
+        requestId: String,
+        songId: String,
+        inputStream: InputStream,
+        fileSize: Long,
+    ) {
+        val channelClient = Wearable.getChannelClient(this@WearCommandReceiver)
+        val channel = channelClient.openChannel(nodeId, WearDataPaths.TRANSFER_CHANNEL).await()
+
+        try {
+            val outputStream = channelClient.getOutputStream(channel).await()
+
+            // Write header: requestId length (4 bytes big-endian) + requestId bytes
+            val requestIdBytes = requestId.toByteArray(Charsets.UTF_8)
+            val lengthBytes = ByteBuffer.allocate(4).putInt(requestIdBytes.size).array()
+            outputStream.write(lengthBytes)
+            outputStream.write(requestIdBytes)
+
+            // Stream audio data in chunks
+            val buffer = ByteArray(TRANSFER_CHUNK_SIZE)
+            var totalSent = 0L
+            var lastProgressUpdate = 0L
+
+            inputStream.use { input ->
+                var bytesRead: Int
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    // Check for cancellation
+                    if (cancelledTransfers.remove(requestId)) {
+                        Timber.tag(TAG).d("Transfer cancelled during streaming: $requestId")
+                        sendTransferProgress(
+                            nodeId, requestId, songId, totalSent, fileSize,
+                            WearTransferProgress.STATUS_CANCELLED,
+                        )
+                        return
+                    }
+
+                    outputStream.write(buffer, 0, bytesRead)
+                    totalSent += bytesRead
+
+                    // Send progress updates periodically
+                    if (totalSent - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL_BYTES) {
+                        sendTransferProgress(
+                            nodeId, requestId, songId, totalSent, fileSize,
+                            WearTransferProgress.STATUS_TRANSFERRING,
+                        )
+                        lastProgressUpdate = totalSent
+                    }
+                }
+            }
+
+            outputStream.flush()
+            outputStream.close()
+
+            // Send completion status
+            sendTransferProgress(
+                nodeId, requestId, songId, fileSize, fileSize,
+                WearTransferProgress.STATUS_COMPLETED,
+            )
+            Timber.tag(TAG).d("Transfer complete: songId=$songId, $totalSent bytes sent")
+
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to stream file to watch")
+            sendTransferProgress(
+                nodeId, requestId, songId, 0, fileSize,
+                WearTransferProgress.STATUS_FAILED, e.message,
+            )
+        } finally {
+            try {
+                channelClient.close(channel).await()
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Failed to close channel")
+            }
+        }
+    }
+
+    private suspend fun sendTransferMetadataError(
+        nodeId: String,
+        requestId: String,
+        songId: String,
+        errorMessage: String,
+    ) {
+        val metadata = WearTransferMetadata(
+            requestId = requestId,
+            songId = songId,
+            title = "",
+            artist = "",
+            album = "",
+            albumId = 0L,
+            duration = 0L,
+            mimeType = "",
+            fileSize = 0L,
+            bitrate = 0,
+            sampleRate = 0,
+            error = errorMessage,
+        )
+        try {
+            val metadataBytes = json.encodeToString(metadata).toByteArray(Charsets.UTF_8)
+            val msgClient = Wearable.getMessageClient(this@WearCommandReceiver)
+            msgClient.sendMessage(nodeId, WearDataPaths.TRANSFER_METADATA, metadataBytes).await()
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to send transfer error metadata")
+        }
+    }
+
+    private suspend fun sendTransferProgress(
+        nodeId: String,
+        requestId: String,
+        songId: String,
+        bytesTransferred: Long,
+        totalBytes: Long,
+        status: String,
+        error: String? = null,
+    ) {
+        val progress = WearTransferProgress(
+            requestId = requestId,
+            songId = songId,
+            bytesTransferred = bytesTransferred,
+            totalBytes = totalBytes,
+            status = status,
+            error = error,
+        )
+        try {
+            val progressBytes = json.encodeToString(progress).toByteArray(Charsets.UTF_8)
+            val msgClient = Wearable.getMessageClient(this@WearCommandReceiver)
+            msgClient.sendMessage(nodeId, WearDataPaths.TRANSFER_PROGRESS, progressBytes).await()
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Failed to send transfer progress")
         }
     }
 

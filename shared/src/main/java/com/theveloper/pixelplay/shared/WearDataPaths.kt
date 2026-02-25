@@ -28,4 +28,19 @@ object WearDataPaths {
 
     /** Message path for library browse responses (phone -> watch) */
     const val BROWSE_RESPONSE = "/browse_response"
+
+    /** Message path for transfer requests (watch -> phone) */
+    const val TRANSFER_REQUEST = "/transfer_request"
+
+    /** Message path for transfer metadata (phone -> watch, sent before channel stream) */
+    const val TRANSFER_METADATA = "/transfer_metadata"
+
+    /** ChannelClient path for audio file streaming (phone -> watch) */
+    const val TRANSFER_CHANNEL = "/transfer_audio"
+
+    /** Message path for transfer progress updates (phone -> watch) */
+    const val TRANSFER_PROGRESS = "/transfer_progress"
+
+    /** Message path for transfer cancellation (watch -> phone) */
+    const val TRANSFER_CANCEL = "/transfer_cancel"
 }
