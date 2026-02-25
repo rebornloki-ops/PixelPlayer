@@ -204,6 +204,9 @@ constructor(
         // Quick Settings / Last Playlist
         val LAST_PLAYLIST_ID = stringPreferencesKey("last_playlist_id")
         val LAST_PLAYLIST_NAME = stringPreferencesKey("last_playlist_name")
+
+        // Smart Duration Filtering
+        val MIN_SONG_DURATION = intPreferencesKey("min_song_duration_ms")
     }
 
     val appRebrandDialogShownFlow: Flow<Boolean> =
@@ -701,6 +704,26 @@ constructor(
             preferences[PreferencesKeys.LAST_DAILY_MIX_UPDATE] = timestamp
         }
     }
+
+    // ===== Smart Duration Filtering =====
+
+    /** Minimum song duration in milliseconds. Default 10000ms (10 seconds). */
+    val minSongDurationFlow: Flow<Int> =
+        dataStore.data.map { preferences ->
+            (preferences[PreferencesKeys.MIN_SONG_DURATION] ?: 10000).coerceIn(0, 120000)
+        }
+
+    suspend fun setMinSongDuration(durationMs: Int) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.MIN_SONG_DURATION] = durationMs.coerceIn(0, 120000)
+        }
+    }
+
+    suspend fun getMinSongDuration(): Int {
+        return minSongDurationFlow.first()
+    }
+
+    // ===== End Smart Duration Filtering =====
 
     val allowedDirectoriesFlow: Flow<Set<String>> =
             dataStore.data.map { preferences ->

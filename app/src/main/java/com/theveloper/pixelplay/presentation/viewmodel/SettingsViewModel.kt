@@ -83,7 +83,8 @@ data class SettingsUiState(
     val backupValidationErrors: List<ValidationError> = emptyList(),
     val isInspectingBackup: Boolean = false,
     val collagePattern: CollagePattern = CollagePattern.default,
-    val collageAutoRotate: Boolean = false
+    val collageAutoRotate: Boolean = false,
+    val minSongDuration: Int = 10000
 )
 
 data class FailedSongInfo(
@@ -362,6 +363,12 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(tapBackgroundClosesPlayer = enabled) }
             }
         }
+
+        viewModelScope.launch {
+            userPreferencesRepository.minSongDurationFlow.collect { duration ->
+                _uiState.update { it.copy(minSongDuration = duration) }
+            }
+        }
     }
 
     fun setAppRebrandDialogShown(wasShown: Boolean) {
@@ -627,6 +634,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             if (isSyncing.value) return@launch
             syncManager.fullSync()
+        }
+    }
+
+    fun setMinSongDuration(durationMs: Int) {
+        viewModelScope.launch {
+            userPreferencesRepository.setMinSongDuration(durationMs)
+            // Trigger a library rescan so the change takes effect in the database
+            syncManager.forceRefresh()
         }
     }
 

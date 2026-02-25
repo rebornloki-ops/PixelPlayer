@@ -70,6 +70,7 @@ constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val contentResolver: ContentResolver = appContext.contentResolver
+    private var minSongDurationMs: Int = 10000
 
     override suspend fun doWork(): Result =
             withContext(Dispatchers.IO) {
@@ -102,6 +103,9 @@ constructor(
                     val directoryResolver = DirectoryRuleResolver(allowedDirs, blockedDirs)
                     
                     var lastSyncTimestamp = userPreferencesRepository.getLastSyncTimestamp()
+
+                    // Smart Duration Filtering
+                    minSongDurationMs = userPreferencesRepository.getMinSongDuration()
 
                     Timber.tag(TAG)
                         .d(
@@ -374,14 +378,14 @@ constructor(
      * Efficiently fetches ONLY the IDs of all songs in MediaStore. Used for fast deletion
      * detection.
      */
-    private fun getBaseSelection(): Pair<String, Array<String>> {
+    private fun getBaseSelection(minDurationMs: Int = 10000): Pair<String, Array<String>> {
         val selectionBuilder = StringBuilder()
         val selectionArgsList = mutableListOf<String>()
 
         selectionBuilder.append(
                 "((${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} >= ?) "
         )
-        selectionArgsList.add("10000")
+        selectionArgsList.add(minDurationMs.toString())
 
         selectionBuilder.append("OR ${MediaStore.Audio.Media.DATA} LIKE '%.m4a' ")
         selectionBuilder.append("OR ${MediaStore.Audio.Media.DATA} LIKE '%.flac' ")
@@ -400,7 +404,7 @@ constructor(
         val ids = HashSet<Long>()
         // We need DATA to check path filtering
         val projection = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DATA)
-        val (selection, selectionArgs) = getBaseSelection()
+        val (selection, selectionArgs) = getBaseSelection(minSongDurationMs)
 
         contentResolver.query(
                         MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
@@ -769,7 +773,7 @@ constructor(
                         MediaStore.Audio.Media.DATE_MODIFIED
                 )
 
-        val (baseSelection, baseArgs) = getBaseSelection()
+        val (baseSelection, baseArgs) = getBaseSelection(minSongDurationMs)
         val selectionBuilder = StringBuilder(baseSelection)
         val selectionArgsList = baseArgs.toMutableList()
 
@@ -1253,7 +1257,7 @@ constructor(
     private fun fetchMediaStoreFilePaths(): Set<String> {
         val paths = HashSet<String>()
         val projection = arrayOf(MediaStore.Audio.Media.DATA)
-        val (selection, selectionArgs) = getBaseSelection()
+        val (selection, selectionArgs) = getBaseSelection(minSongDurationMs)
         
         contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,

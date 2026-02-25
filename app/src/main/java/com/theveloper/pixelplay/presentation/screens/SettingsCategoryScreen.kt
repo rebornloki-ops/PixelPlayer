@@ -401,6 +401,17 @@ fun SettingsCategoryScreen(
                                 )
                             }
 
+                            SettingsSubsection(title = "Filtering") {
+                                SliderSettingsItem(
+                                    label = "Minimum Song Duration",
+                                    value = uiState.minSongDuration.toFloat(),
+                                    valueRange = 0f..120000f,
+                                    steps = 23, // 0, 5, 10, 15, ... 120 seconds (24 positions, 23 steps)
+                                    onValueChange = { settingsViewModel.setMinSongDuration(it.toInt()) },
+                                    valueText = { value -> "${(value / 1000).toInt()}s" }
+                                )
+                            }
+
                             SettingsSubsection(title = "Sync and Scanning") {
                                 RefreshLibraryItem(
                                     isSyncing = isSyncing,
