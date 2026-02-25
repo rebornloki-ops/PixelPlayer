@@ -382,16 +382,16 @@ constructor(
         val selectionBuilder = StringBuilder()
         val selectionArgsList = mutableListOf<String>()
 
-        selectionBuilder.append(
-                "((${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} >= ?) "
-        )
+        // Apply min duration to every accepted audio entry, including extension-based fallbacks.
+        selectionBuilder.append("(${MediaStore.Audio.Media.DURATION} >= ? AND (")
+        selectionBuilder.append("(${MediaStore.Audio.Media.IS_MUSIC} != 0) ")
         selectionArgsList.add(minDurationMs.toString())
 
         selectionBuilder.append("OR ${MediaStore.Audio.Media.DATA} LIKE '%.m4a' ")
         selectionBuilder.append("OR ${MediaStore.Audio.Media.DATA} LIKE '%.flac' ")
         selectionBuilder.append("OR ${MediaStore.Audio.Media.DATA} LIKE '%.wav' ")
         selectionBuilder.append("OR ${MediaStore.Audio.Media.DATA} LIKE '%.opus' ")
-        selectionBuilder.append("OR ${MediaStore.Audio.Media.DATA} LIKE '%.ogg')")
+        selectionBuilder.append("OR ${MediaStore.Audio.Media.DATA} LIKE '%.ogg'))")
 
         return Pair(selectionBuilder.toString(), selectionArgsList.toTypedArray())
     }
