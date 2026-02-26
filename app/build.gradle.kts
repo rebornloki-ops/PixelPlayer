@@ -334,6 +334,11 @@ dependencies {
     implementation(libs.androidx.app)
     implementation(libs.androidx.app.projected)
 
+    // Wear OS Data Layer
+    implementation(project(":shared"))
+    implementation(libs.play.services.wearable)
+    implementation(libs.kotlinx.coroutines.play.services)
+
     // Telegram TDLib
     implementation(libs.tdlib)
 

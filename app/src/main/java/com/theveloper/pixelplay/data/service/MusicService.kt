@@ -1,5 +1,6 @@
 package com.theveloper.pixelplay.data.service
 
+import android.app.AlarmManager
 import android.app.ForegroundServiceStartNotAllowedException
 import android.app.PendingIntent
 import android.content.ComponentName
@@ -16,11 +17,11 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
-import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -34,7 +35,6 @@ import coil.size.Size
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
-import com.theveloper.pixelplay.MainActivity
 import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.data.model.PlayerInfo
 import com.theveloper.pixelplay.data.preferences.UserPreferencesRepository
@@ -68,7 +68,9 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import com.theveloper.pixelplay.data.preferences.ThemePreference
 import com.theveloper.pixelplay.data.service.auto.AutoMediaBrowseTree
+import com.theveloper.pixelplay.data.service.wear.WearStatePublisher
 import com.theveloper.pixelplay.presentation.viewmodel.ColorSchemePair
+import com.theveloper.pixelplay.shared.WearIntents
 import com.theveloper.pixelplay.utils.MediaItemBuilder
 import kotlin.math.abs
 
@@ -96,6 +98,8 @@ class MusicService : MediaLibraryService() {
     @Inject
     lateinit var autoMediaBrowseTree: AutoMediaBrowseTree
     @Inject
+    lateinit var wearStatePublisher: WearStatePublisher
+    @Inject
     lateinit var replayGainManager: com.theveloper.pixelplay.data.media.ReplayGainManager
 
     private var replayGainEnabled = false
@@ -119,11 +123,33 @@ class MusicService : MediaLibraryService() {
     private var countedPlayCount = 0
     private var countedOriginalId: String? = null
     private var countedPlayListener: Player.Listener? = null
+    private val alarmManager by lazy {
+        getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    }
+    private var endOfTrackTimerSongId: String? = null
 
     companion object {
         private const val TAG = "MusicService_PixelPlay"
         const val NOTIFICATION_ID = 101
         const val ACTION_SLEEP_TIMER_EXPIRED = "com.theveloper.pixelplay.ACTION_SLEEP_TIMER_EXPIRED"
+
+        private const val APP_PACKAGE_PREFIX = "com.theveloper.pixelplay"
+        private val BLOCKED_WEAR_CONTROLLER_PREFIXES = listOf(
+            "android.media.session.MediaController",
+            "com.google.android.wearable",
+            "com.google.android.clockwork",
+            "com.google.android.apps.wearable",
+            "com.google.android.apps.wear.companion",
+            "com.samsung.android.app.watchmanager",
+            "com.mobvoi.wear",
+        )
+        private val WEAR_HINT_KEY_MARKERS = listOf(
+            "wear",
+            "clockwork",
+            "companion",
+            "node",
+            "remote_device",
+        )
     }
 
     override fun onCreate() {
@@ -245,14 +271,37 @@ class MusicService : MediaLibraryService() {
                 session: MediaSession,
                 controller: MediaSession.ControllerInfo
             ): MediaSession.ConnectionResult {
+                val controllerPackage = controller.packageName
+                val hintKeys = controller.connectionHints.keySet().joinToString(",")
+                Timber.tag(TAG).d(
+                    "onConnect from package=%s uid=%s trusted=%s version=%s hints=[%s]",
+                    controllerPackage,
+                    controller.uid,
+                    controller.isTrusted,
+                    controller.controllerVersion,
+                    hintKeys
+                )
+                if (shouldRejectWearController(controller)) {
+                    Timber.tag(TAG).i(
+                        "Rejecting Wear system controller connection from package=%s",
+                        controllerPackage
+                    )
+                    return MediaSession.ConnectionResult.reject()
+                }
+
                 val defaultResult = super.onConnect(session, controller)
                 val customCommands = listOf(
                     MusicNotificationProvider.CUSTOM_COMMAND_LIKE,
+                    MusicNotificationProvider.CUSTOM_COMMAND_SET_FAVORITE_STATE,
+                    MusicNotificationProvider.CUSTOM_COMMAND_TOGGLE_SHUFFLE,
                     MusicNotificationProvider.CUSTOM_COMMAND_SHUFFLE_ON,
                     MusicNotificationProvider.CUSTOM_COMMAND_SHUFFLE_OFF,
                     MusicNotificationProvider.CUSTOM_COMMAND_SET_SHUFFLE_STATE,
                     MusicNotificationProvider.CUSTOM_COMMAND_CYCLE_REPEAT_MODE,
-                    MusicNotificationProvider.CUSTOM_COMMAND_COUNTED_PLAY
+                    MusicNotificationProvider.CUSTOM_COMMAND_COUNTED_PLAY,
+                    MusicNotificationProvider.CUSTOM_COMMAND_SET_SLEEP_TIMER_DURATION,
+                    MusicNotificationProvider.CUSTOM_COMMAND_SET_SLEEP_TIMER_END_OF_TRACK,
+                    MusicNotificationProvider.CUSTOM_COMMAND_CANCEL_SLEEP_TIMER,
                 ).map { SessionCommand(it, Bundle.EMPTY) }
 
                 val sessionCommandsBuilder = SessionCommands.Builder()
@@ -281,6 +330,27 @@ class MusicService : MediaLibraryService() {
                     MusicNotificationProvider.CUSTOM_COMMAND_CANCEL_COUNTED_PLAY -> {
                         stopCountedPlay()
                     }
+                    MusicNotificationProvider.CUSTOM_COMMAND_SET_SLEEP_TIMER_DURATION -> {
+                        val minutes = args.getInt(
+                            MusicNotificationProvider.EXTRA_SLEEP_TIMER_MINUTES,
+                            0
+                        )
+                        setDurationSleepTimer(minutes)
+                    }
+                    MusicNotificationProvider.CUSTOM_COMMAND_SET_SLEEP_TIMER_END_OF_TRACK -> {
+                        val enabled = args.getBoolean(
+                            MusicNotificationProvider.EXTRA_END_OF_TRACK_ENABLED,
+                            true
+                        )
+                        setEndOfTrackSleepTimer(enabled)
+                    }
+                    MusicNotificationProvider.CUSTOM_COMMAND_CANCEL_SLEEP_TIMER -> {
+                        cancelSleepTimers()
+                    }
+                    MusicNotificationProvider.CUSTOM_COMMAND_TOGGLE_SHUFFLE -> {
+                        val enabled = !isManualShuffleEnabled
+                        updateManualShuffleState(session, enabled = enabled, broadcast = true)
+                    }
                     MusicNotificationProvider.CUSTOM_COMMAND_SHUFFLE_ON -> {
                         Timber.tag("MusicService")
                             .d("Executing SHUFFLE_ON. Current shuffleMode: ${session.player.shuffleModeEnabled}")
@@ -307,29 +377,28 @@ class MusicService : MediaLibraryService() {
                         }
                         session.player.repeatMode = newMode
                         refreshMediaSessionUi(session)
+                        requestWidgetFullUpdate(force = true)
                     }
                     MusicNotificationProvider.CUSTOM_COMMAND_LIKE -> {
-                        val songId = session.player.currentMediaItem?.mediaId ?: return@onCustomCommand Futures.immediateFuture(SessionResult(
-                            SessionError.ERROR_UNKNOWN))
-                        Timber.tag("MusicService").d("Executing LIKE for songId: $songId")
-                        val isCurrentlyFavorite = favoriteSongIds.contains(songId)
-                        val targetFavoriteState = !isCurrentlyFavorite
-                        favoriteSongIds = if (isCurrentlyFavorite) {
-                            favoriteSongIds - songId
-                        } else {
-                            favoriteSongIds + songId
-                        }
-
-                        refreshMediaSessionUi(session)
-
-                        serviceScope.launch {
-                            Timber.tag("MusicService").d("Toggling favorite status for $songId")
-                            musicRepository.setFavoriteStatus(songId, targetFavoriteState)
-                            userPreferencesRepository.setFavoriteSong(songId, targetFavoriteState)
-                            Timber.tag("MusicService")
-                                .d("Toggled favorite status. Updating notification.")
-                            refreshMediaSessionUi(session)
-                        }
+                        val songId = session.player.currentMediaItem?.mediaId
+                            ?: return@onCustomCommand Futures.immediateFuture(
+                                SessionResult(SessionError.ERROR_UNKNOWN)
+                            )
+                        val targetFavoriteState = !favoriteSongIds.contains(songId)
+                        return@onCustomCommand setCurrentSongFavoriteState(
+                            session = session,
+                            targetFavoriteState = targetFavoriteState
+                        )
+                    }
+                    MusicNotificationProvider.CUSTOM_COMMAND_SET_FAVORITE_STATE -> {
+                        val enabled = args.getBoolean(
+                            MusicNotificationProvider.EXTRA_FAVORITE_ENABLED,
+                            false
+                        )
+                        return@onCustomCommand setCurrentSongFavoriteState(
+                            session = session,
+                            targetFavoriteState = enabled
+                        )
                     }
                 }
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
@@ -458,11 +527,10 @@ class MusicService : MediaLibraryService() {
             .setBitmapLoader(CoilBitmapLoader(this, serviceScope))
             .build()
 
-        setMediaNotificationProvider(
-            DefaultMediaNotificationProvider.Builder(this)
-                .build()
-                .also { it.setSmallIcon(R.drawable.monochrome_player) }
-        )
+        val localOnlyProvider = LocalOnlyMediaNotificationProvider(this).also {
+            it.setSmallIcon(R.drawable.monochrome_player)
+        }
+        setMediaNotificationProvider(localOnlyProvider)
         mediaSession?.let { refreshMediaSessionUi(it) }
 
         serviceScope.launch {
@@ -479,10 +547,117 @@ class MusicService : MediaLibraryService() {
                         Timber.tag("MusicService")
                             .d("Favorite status changed for current song. Updating notification.")
                         mediaSession?.let { refreshMediaSessionUi(it) }
+                        requestWidgetFullUpdate(force = true)
                     }
                 }
             }
         }
+    }
+
+    private fun shouldRejectWearController(controller: MediaSession.ControllerInfo): Boolean {
+        val controllerPackage = controller.packageName
+        if (controllerPackage.startsWith(APP_PACKAGE_PREFIX)) {
+            return false
+        }
+        val blockedByPackage = BLOCKED_WEAR_CONTROLLER_PREFIXES.any { prefix ->
+            controllerPackage.startsWith(prefix)
+        }
+        if (blockedByPackage) {
+            return true
+        }
+
+        val hasWearHints = controller.connectionHints.keySet().any { key ->
+            WEAR_HINT_KEY_MARKERS.any { marker ->
+                key.contains(marker, ignoreCase = true)
+            }
+        }
+        if (!hasWearHints) {
+            return false
+        }
+        // If hints identify a Wear/remote controller and it's not our app package,
+        // reject to avoid the default Wear system media player hijacking the session.
+        return true
+    }
+
+    private fun createSleepTimerPendingIntent(): PendingIntent {
+        val intent = Intent(this, SleepTimerReceiver::class.java)
+        return PendingIntent.getBroadcast(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun cancelDurationSleepTimerInternal() {
+        alarmManager.cancel(createSleepTimerPendingIntent())
+    }
+
+    private fun setDurationSleepTimer(minutes: Int) {
+        if (minutes <= 0) {
+            cancelSleepTimers()
+            return
+        }
+        endOfTrackTimerSongId = null
+        val triggerAtMillis = System.currentTimeMillis() + (minutes * 60_000L)
+        val pendingIntent = createSleepTimerPendingIntent()
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAtMillis,
+                        pendingIntent,
+                    )
+                } else {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAtMillis,
+                        pendingIntent,
+                    )
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent,
+                )
+            } else {
+                alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent,
+                )
+            }
+            Timber.tag(TAG).d("Sleep timer set from Wear for %d minutes", minutes)
+        } catch (e: SecurityException) {
+            Timber.tag(TAG).w(e, "Exact alarm denied; using inexact sleep timer")
+            alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+        }
+    }
+
+    private fun setEndOfTrackSleepTimer(enabled: Boolean) {
+        if (!enabled) {
+            endOfTrackTimerSongId = null
+            Timber.tag(TAG).d("End-of-track timer disabled from Wear")
+            return
+        }
+        cancelDurationSleepTimerInternal()
+        val currentSongId = mediaSession?.player?.currentMediaItem?.mediaId
+        if (currentSongId.isNullOrBlank()) {
+            endOfTrackTimerSongId = null
+            Timber.tag(TAG).d("End-of-track timer ignored: no active song")
+            return
+        }
+        endOfTrackTimerSongId = currentSongId
+        Timber.tag(TAG).d("End-of-track timer set from Wear for mediaId=%s", currentSongId)
+    }
+
+    private fun cancelSleepTimers() {
+        cancelDurationSleepTimerInternal()
+        endOfTrackTimerSongId = null
+        Timber.tag(TAG).d("Sleep timers cancelled from Wear")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -526,6 +701,7 @@ class MusicService : MediaLibraryService() {
                 }
                 ACTION_SLEEP_TIMER_EXPIRED -> {
                     Timber.tag(TAG).d("Sleep timer expired action received. Pausing player.")
+                    cancelDurationSleepTimerInternal()
                     player.pause()
                 }
             }
@@ -550,7 +726,9 @@ class MusicService : MediaLibraryService() {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             val player = engine.masterPlayer
             Timber.tag(TAG).d("onIsPlayingChanged: $isPlaying. Duration: ${player.duration}, Seekable: ${player.isCurrentMediaItemSeekable}")
-            requestWidgetFullUpdate()
+            // Push state immediately so the watch can foreground PixelPlay before
+            // system media surfaces take over.
+            requestWidgetFullUpdate(force = true)
             mediaSession?.let { refreshMediaSessionUi(it) }
         }
         
@@ -562,10 +740,41 @@ class MusicService : MediaLibraryService() {
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             Timber.tag(TAG).d("Playback state changed: $playbackState")
+            if (playbackState == Player.STATE_ENDED) {
+                endOfTrackTimerSongId = null
+            }
             mediaSession?.let { refreshMediaSessionUi(it) }
         }
 
         override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+            val eotTargetSongId = endOfTrackTimerSongId
+            if (!eotTargetSongId.isNullOrBlank()) {
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    val previousSongId = engine.masterPlayer.run {
+                        if (previousMediaItemIndex != C.INDEX_UNSET) {
+                            runCatching { getMediaItemAt(previousMediaItemIndex).mediaId }.getOrNull()
+                        } else {
+                            null
+                        }
+                    }
+                    if (previousSongId == eotTargetSongId) {
+                        endOfTrackTimerSongId = null
+                        engine.masterPlayer.seekTo(0L)
+                        engine.masterPlayer.pause()
+                        Timber.tag(TAG).d("Paused playback at end of track from Wear timer")
+                    }
+                } else if (item?.mediaId != eotTargetSongId) {
+                    endOfTrackTimerSongId = null
+                    Timber.tag(TAG).d("Cleared end-of-track timer after manual track change")
+                }
+            }
+            requestWidgetAndWearRefreshWithFollowUp()
+            mediaSession?.let { refreshMediaSessionUi(it) }
+        }
+
+        override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+            // Some devices/apps deliver title/artist/art after transition callback.
+            // Force an immediate publish for real-time watch metadata.
             requestWidgetFullUpdate(force = true)
             mediaSession?.let { refreshMediaSessionUi(it) }
             // Apply ReplayGain volume adjustment for the new track
@@ -684,7 +893,9 @@ class MusicService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaSession
 
     override fun onDestroy() {
+        wearStatePublisher.clearState()
         replayGainJob?.cancel()
+
         mediaSession?.run {
             release()
             mediaSession = null
@@ -698,8 +909,10 @@ class MusicService : MediaLibraryService() {
     }
 
     private fun getOpenAppPendingIntent(): PendingIntent {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        val intent = Intent(WearIntents.ACTION_OPEN_PLAYER).apply {
+            `package` = packageName
+            addCategory(Intent.CATEGORY_DEFAULT)
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("ACTION_SHOW_PLAYER", true) // Signal to MainActivity to show the player
         }
         return PendingIntent.getActivity(
@@ -712,6 +925,7 @@ class MusicService : MediaLibraryService() {
 
     // --- LÓGICA PARA ACTUALIZACIÓN DE WIDGETS Y DATOS ---
     private var debouncedWidgetUpdateJob: Job? = null
+    private var followUpWidgetUpdateJob: Job? = null
     private val WIDGET_STATE_DEBOUNCE_MS = 300L
 
     private fun requestWidgetFullUpdate(force: Boolean = false) {
@@ -724,9 +938,22 @@ class MusicService : MediaLibraryService() {
         }
     }
 
+    private fun requestWidgetAndWearRefreshWithFollowUp() {
+        requestWidgetFullUpdate(force = true)
+        followUpWidgetUpdateJob?.cancel()
+        followUpWidgetUpdateJob = serviceScope.launch {
+            delay(250L)
+            requestWidgetFullUpdate(force = true)
+        }
+    }
+
     private suspend fun processWidgetUpdateInternal() {
+        val player = engine.masterPlayer
+        val currentMediaId = withContext(Dispatchers.Main) { player.currentMediaItem?.mediaId }
         val playerInfo = buildPlayerInfo()
         updateGlanceWidgets(playerInfo)
+        // Publish state to Wear OS watch
+        wearStatePublisher.publishState(currentMediaId, playerInfo)
     }
 
     private suspend fun buildPlayerInfo(): PlayerInfo {
@@ -739,6 +966,7 @@ class MusicService : MediaLibraryService() {
         var totalDuration = 0L
         var snapshotWindowIndex = 0
         var snapshotTimeline: androidx.media3.common.Timeline = androidx.media3.common.Timeline.EMPTY
+
         withContext(Dispatchers.Main) {
             currentItem = player.currentMediaItem
             isPlaying = player.isPlaying
@@ -748,6 +976,7 @@ class MusicService : MediaLibraryService() {
             snapshotWindowIndex = player.currentMediaItemIndex
             snapshotTimeline = player.currentTimeline
         }
+
         val shuffleEnabled = isManualShuffleEnabled // Manual shuffle for sync with PlayerViewModel
 
         val title = currentItem?.mediaMetadata?.title?.toString().orEmpty()
@@ -806,10 +1035,7 @@ class MusicService : MediaLibraryService() {
             )
         }
 
-        val isFavorite = false
-//        val isFavorite = mediaId?.let {
-//            //musicRepository.getFavoriteSongs().firstOrNull()?.any { song -> song.id.toString() == it }
-//        } ?: false
+        val isFavorite = isSongFavorite(mediaId)
 
         val queueItems = mutableListOf<com.theveloper.pixelplay.data.model.QueueItem>()
         // Reuse snapshotTimeline / snapshotWindowIndex captured at the top — no extra main-thread hop
@@ -859,6 +1085,8 @@ class MusicService : MediaLibraryService() {
     private val widgetArtByteArrayCache = object : LruCache<String, ByteArray>(5 * 256 * 1024) {
         override fun sizeOf(key: String, value: ByteArray): Int = value.size
     }
+
+    private val widgetArtFallbackSizePx = 1024
 
     // Color scheme cache: skip recomputation when art URI and palette style haven't changed
     private var cachedSchemeArtUri: String? = null
@@ -922,10 +1150,18 @@ class MusicService : MediaLibraryService() {
 
     private suspend fun loadBitmapDataFromUri(context: Context, uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
         try {
-            val request = ImageRequest.Builder(context).data(uri).size(Size(256, 256)).allowHardware(false).build()
+            val request = ImageRequest.Builder(context)
+                .data(uri)
+                .size(Size(widgetArtFallbackSizePx, widgetArtFallbackSizePx))
+                .allowHardware(false)
+                .build()
             val drawable = context.imageLoader.execute(request).drawable
             drawable?.let {
-                val bitmap = it.toBitmap(256, 256)
+                val sourceWidth = it.intrinsicWidth.takeIf { w -> w > 0 } ?: widgetArtFallbackSizePx
+                val sourceHeight = it.intrinsicHeight.takeIf { h -> h > 0 } ?: widgetArtFallbackSizePx
+                val targetWidth = minOf(sourceWidth, widgetArtFallbackSizePx)
+                val targetHeight = minOf(sourceHeight, widgetArtFallbackSizePx)
+                val bitmap = it.toBitmap(targetWidth, targetHeight)
                 val stream = ByteArrayOutputStream()
                 // Do NOT recycle bitmap here: toBitmap() may return Coil's cached Bitmap
                 // object directly. Recycling it would invalidate any copy already handed
@@ -1024,6 +1260,7 @@ class MusicService : MediaLibraryService() {
     ) {
         val changed = isManualShuffleEnabled != enabled
         isManualShuffleEnabled = enabled
+        session.player.shuffleModeEnabled = enabled
         
         if (persistentShuffleEnabled) {
             serviceScope.launch {
@@ -1042,6 +1279,41 @@ class MusicService : MediaLibraryService() {
         }
         refreshMediaSessionUi(session)
         requestWidgetFullUpdate(force = true)
+    }
+
+    private fun setCurrentSongFavoriteState(
+        session: MediaSession,
+        targetFavoriteState: Boolean
+    ): ListenableFuture<SessionResult> {
+        val songId = session.player.currentMediaItem?.mediaId
+            ?: return Futures.immediateFuture(SessionResult(SessionError.ERROR_UNKNOWN))
+
+        val isCurrentlyFavorite = favoriteSongIds.contains(songId)
+        if (isCurrentlyFavorite == targetFavoriteState) {
+            refreshMediaSessionUi(session)
+            requestWidgetFullUpdate(force = true)
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+
+        favoriteSongIds = if (targetFavoriteState) {
+            favoriteSongIds + songId
+        } else {
+            favoriteSongIds - songId
+        }
+
+        refreshMediaSessionUi(session)
+        requestWidgetFullUpdate(force = true)
+
+        serviceScope.launch {
+            Timber.tag("MusicService")
+                .d("Applying favorite=$targetFavoriteState for songId: $songId")
+            musicRepository.setFavoriteStatus(songId, targetFavoriteState)
+            userPreferencesRepository.setFavoriteSong(songId, targetFavoriteState)
+            refreshMediaSessionUi(session)
+            requestWidgetFullUpdate(force = true)
+        }
+
+        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
     }
 
     private fun buildMediaButtonPreferences(session: MediaSession): List<CommandButton> {

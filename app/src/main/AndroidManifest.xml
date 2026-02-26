@@ -53,6 +53,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.APP_MUSIC" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="com.theveloper.pixelplay.action.OPEN_PLAYER" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
@@ -68,6 +72,12 @@
             android:name=".presentation.netease.auth.NeteaseLoginActivity"
             android:exported="false"
             android:label="Netease Login"
+            android:theme="@style/Theme.PixelPlay" />
+
+        <activity
+            android:name=".presentation.gdrive.auth.GDriveLoginActivity"
+            android:exported="false"
+            android:label="Google Drive Login"
             android:theme="@style/Theme.PixelPlay" />
 
 
@@ -208,6 +218,36 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Wear OS Data Layer: receives playback/volume commands from the watch -->
+        <service
+            android:name=".data.service.wear.WearCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/playback_command" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/volume_command" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/browse_request" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/transfer_request" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/transfer_cancel" />
+            </intent-filter>
+        </service>
 
         <!-- Quick Settings Tiles -->
         <service

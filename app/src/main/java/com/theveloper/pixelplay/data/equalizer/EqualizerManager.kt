@@ -73,6 +73,8 @@ class EqualizerManager @Inject constructor() {
     // Global device capabilities (Checking existence of effect UUIDs)
     private var isBassBoostSupportedGlobal = false
     private var isVirtualizerSupportedGlobal = false
+    private var effectsDisabledForProcess = false
+    private var effectsDisableReason: String? = null
     
     init {
         checkDeviceSupport()
@@ -100,6 +102,14 @@ class EqualizerManager @Inject constructor() {
      * Call this when the player is created or swapped during crossfade.
      */
     suspend fun attachToAudioSession(audioSessionId: Int) {
+        if (effectsDisabledForProcess) {
+            Timber.tag(TAG).d(
+                "Skipping attachToAudioSession($audioSessionId): audio effects disabled (%s)",
+                effectsDisableReason ?: "unknown reason"
+            )
+            return
+        }
+
         if (audioSessionId == 0) {
             Timber.tag(TAG).w("Invalid audio session ID: 0")
             return
@@ -115,10 +125,27 @@ class EqualizerManager @Inject constructor() {
         
         try {
             // Initialize Equalizer
-            equalizer = Equalizer(0, audioSessionId).apply {
-                minEqLevel = bandLevelRange[0]
-                maxEqLevel = bandLevelRange[1]
-                enabled = _isEnabled.value
+            equalizer = try {
+                Equalizer(0, audioSessionId).apply {
+                    minEqLevel = bandLevelRange[0]
+                    maxEqLevel = bandLevelRange[1]
+                    enabled = _isEnabled.value
+                }
+            } catch (e: Exception) {
+                // Some OEM/route combinations do not expose an effect engine for this session.
+                // Disable effects for this process to avoid repeated hard failures and log spam.
+                effectsDisabledForProcess = true
+                effectsDisableReason = "${e.javaClass.simpleName}: ${e.message ?: "unknown"}"
+                _isEnabled.value = false
+                _bassBoostEnabled.value = false
+                _virtualizerEnabled.value = false
+                _loudnessEnhancerEnabled.value = false
+                Timber.tag(TAG).w(
+                    e,
+                    "Audio effects unavailable on this device/audio route. Disabling EQ stack for this process."
+                )
+                release()
+                return
             }
             
             // Retry loop for effects that might fail initially
