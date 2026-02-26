@@ -63,6 +63,7 @@ import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -71,13 +72,16 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -127,6 +131,7 @@ import com.theveloper.pixelplay.ui.theme.GoogleSansRounded
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 import android.content.pm.PackageManager
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -146,6 +151,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @androidx.annotation.OptIn(UnstableApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CastBottomSheet(
     playerViewModel: PlayerViewModel,
@@ -313,47 +319,66 @@ fun CastBottomSheet(
         bluetoothName = activeBluetoothName
     )
 
-    CastSheetContainer(
-        onDismiss = onDismiss,
-        onExpansionChanged = onExpansionChanged
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { true }
+    )
+
+    DisposableEffect(Unit) {
+        onExpansionChanged(1f)
+        onDispose { onExpansionChanged(0f) }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 12.dp
     ) {
-        if (missingPermissions.isNotEmpty()) {
-            CastPermissionStep(
-                missingPermissions = missingPermissions,
-                onRequestPermissions = {
-                    permissionLauncher.launch(missingPermissions.toTypedArray())
-                }
-            )
-        } else {
-            CastSheetContent(
-                state = uiState,
-                onSelectDevice = { id ->
-                    routes.firstOrNull { it.id == id }?.let { playerViewModel.selectRoute(it) }
-                },
-                onDisconnect = {
-                    playerViewModel.disconnect()
-                    onDismiss()
-                },
-                onVolumeChange = { value ->
-                    if (uiState.activeDevice.isRemote) {
-                        playerViewModel.setRouteVolume(value.toInt())
-                    } else {
-                        playerViewModel.setTrackVolume(value)
+        Box(
+            modifier = Modifier
+                .padding(bottom = 18.dp)
+        ) {
+            if (missingPermissions.isNotEmpty()) {
+                CastPermissionStep(
+                    missingPermissions = missingPermissions,
+                    onRequestPermissions = {
+                        permissionLauncher.launch(missingPermissions.toTypedArray())
                     }
-                },
-                onTurnOnWifi = {
-                    val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(intent)
-                },
-                onOpenBluetoothSettings = {
-                    val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(intent)
-                },
-                onRefresh = { playerViewModel.refreshCastRoutes() },
-                startWithControls = isRemoteSession
-            )
+                )
+            } else {
+                CastSheetContent(
+                    state = uiState,
+                    onSelectDevice = { id ->
+                        routes.firstOrNull { it.id == id }?.let { playerViewModel.selectRoute(it) }
+                    },
+                    onDisconnect = {
+                        playerViewModel.disconnect()
+                        onDismiss()
+                    },
+                    onVolumeChange = { value ->
+                        if (uiState.activeDevice.isRemote) {
+                            playerViewModel.setRouteVolume(value.toInt())
+                        } else {
+                            playerViewModel.setTrackVolume(value)
+                        }
+                    },
+                    onTurnOnWifi = {
+                        val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    },
+                    onOpenBluetoothSettings = {
+                        val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    },
+                    onRefresh = { playerViewModel.refreshCastRoutes() },
+                    startWithControls = isRemoteSession
+                )
+            }
         }
     }
 }
@@ -529,7 +554,7 @@ private fun CastSheetContent(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = statusBarPadding)
+            //.padding(top = statusBarPadding)
     ) {
         Column(
             modifier = Modifier
