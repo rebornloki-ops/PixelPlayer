@@ -14,7 +14,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.unit.Density
-import com.theveloper.pixelplay.presentation.viewmodel.PlayerSheetState
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.max
@@ -33,9 +32,6 @@ internal fun rememberSheetOverlayState(
     density: Density,
     showPlayerContentArea: Boolean,
     hideMiniPlayer: Boolean,
-    currentSheetContentState: PlayerSheetState,
-    hasPendingSaveQueueOverlay: Boolean,
-    hasSelectedSongForInfo: Boolean,
     showQueueSheet: Boolean,
     queueHiddenOffsetPx: Float,
     screenHeightPx: Float,
@@ -58,21 +54,10 @@ internal fun rememberSheetOverlayState(
         derivedStateOf { showPlayerContentArea && !hideMiniPlayer }
     }
 
-    val actuallyShowSheetContent by remember(
-        shouldShowSheet,
-        internalIsKeyboardVisible,
-        currentSheetContentState,
-        hasPendingSaveQueueOverlay,
-        hasSelectedSongForInfo
-    ) {
-        derivedStateOf {
-            shouldShowSheet && (
-                !internalIsKeyboardVisible ||
-                    currentSheetContentState == PlayerSheetState.EXPANDED ||
-                    hasPendingSaveQueueOverlay ||
-                    hasSelectedSongForInfo
-                )
-        }
+    // Keep the sheet mounted while IME is visible to avoid mini-player flicker/recomposition
+    // when the keyboard opens/closes (notably in Search).
+    val actuallyShowSheetContent by remember(shouldShowSheet) {
+        derivedStateOf { shouldShowSheet }
     }
 
     val isQueueVisible by remember(showQueueSheet, queueHiddenOffsetPx, screenHeightPx) {
