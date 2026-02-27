@@ -1,6 +1,7 @@
 package com.theveloper.pixelplay.presentation.screens
 
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -775,8 +776,9 @@ private fun MainPlayerPage(
         },
     )
 
+    val livePositionMs by rememberLivePositionMs(state)
     val trackProgressTarget = if (state.totalDurationMs > 0L) {
-        (state.currentPositionMs.toFloat() / state.totalDurationMs.toFloat()).coerceIn(0f, 1f)
+        (livePositionMs.toFloat() / state.totalDurationMs.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
@@ -879,6 +881,38 @@ private fun MainPlayerPage(
             modifier = Modifier.align(Alignment.CenterEnd),
             color = palette.textPrimary,
         )
+    }
+}
+
+@Composable
+private fun rememberLivePositionMs(state: WearPlayerState): androidx.compose.runtime.State<Long> {
+    val safeDuration = state.totalDurationMs.coerceAtLeast(0L)
+    val safeAnchorPosition = state.currentPositionMs.coerceIn(0L, safeDuration)
+    val positionKey = remember(
+        state.songId,
+        safeAnchorPosition,
+        safeDuration,
+        state.isPlaying,
+    ) {
+        "${state.songId}|$safeAnchorPosition|$safeDuration|${state.isPlaying}"
+    }
+    return produceState(
+        initialValue = safeAnchorPosition,
+        key1 = positionKey,
+    ) {
+        value = safeAnchorPosition
+        if (!state.isPlaying || safeDuration <= 0L) {
+            return@produceState
+        }
+
+        val startElapsedRealtime = SystemClock.elapsedRealtime()
+        while (true) {
+            val elapsed = SystemClock.elapsedRealtime() - startElapsedRealtime
+            val next = (safeAnchorPosition + elapsed).coerceIn(0L, safeDuration)
+            value = next
+            if (next >= safeDuration) break
+            delay(250L)
+        }
     }
 }
 
