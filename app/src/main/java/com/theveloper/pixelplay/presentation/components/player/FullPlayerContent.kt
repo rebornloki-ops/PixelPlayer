@@ -885,7 +885,7 @@ private fun FullPlayerAlbumCoverSection(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = 4.dp)
     ) {
         val desiredHeight = when (carouselStyle) {
             CarouselStyle.NO_PEEK -> maxWidth
@@ -988,7 +988,7 @@ private fun FullPlayerControlsSection(
         applyPlaceholderDelayOnClose = loadingTweaks.applyPlaceholdersOnClose,
         switchOnDragRelease = loadingTweaks.switchOnDragRelease,
         isSheetDragGestureActive = isSheetDragGestureActive,
-        sharedBoundsModifier = Modifier.fillMaxWidth().height(182.dp),
+        sharedBoundsModifier = Modifier.fillMaxWidth().height(160.dp),
         expansionFractionProvider = expansionFractionProvider,
         isExpandedOverride = currentSheetState == PlayerSheetState.EXPANDED,
         normalStartThreshold = 0.42f,
@@ -996,7 +996,7 @@ private fun FullPlayerControlsSection(
         delayCloseThreshold = 1f - (loadingTweaks.contentCloseThresholdPercent / 100f),
         placeholder = {
             if (loadingTweaks.transparentPlaceholders) {
-                Box(Modifier.fillMaxWidth().height(182.dp))
+                Box(Modifier.fillMaxWidth().height(160.dp))
             } else {
                 ControlsPlaceholder(placeholderColor, placeholderOnColor)
             }
@@ -1028,14 +1028,14 @@ private fun FullPlayerControlsSection(
                 tintNextIcon = playerAccentColor
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             BottomToggleRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 66.dp, max = 86.dp)
-                    .padding(horizontal = 26.dp, vertical = 0.dp)
-                    .padding(bottom = 6.dp),
+                    .heightIn(min = 50.dp, max = 66.dp)
+                    .padding(horizontal = 20.dp, vertical = 0.dp)
+                    .padding(bottom = 4.dp),
                 isShuffleEnabled = isShuffleEnabledProvider(),
                 repeatMode = repeatModeProvider(),
                 isFavoriteProvider = isFavoriteProvider,
@@ -1119,7 +1119,7 @@ private fun FullPlayerSongMetadataSection(
         applyPlaceholderDelayOnClose = loadingTweaks.applyPlaceholdersOnClose,
         switchOnDragRelease = loadingTweaks.switchOnDragRelease,
         isSheetDragGestureActive = isSheetDragGestureActive,
-        sharedBoundsModifier = Modifier.fillMaxWidth().heightIn(min = 70.dp),
+        sharedBoundsModifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
         expansionFractionProvider = expansionFractionProvider,
         isExpandedOverride = currentSheetState == PlayerSheetState.EXPANDED,
         normalStartThreshold = 0.20f,
@@ -1127,7 +1127,7 @@ private fun FullPlayerSongMetadataSection(
         delayCloseThreshold = 1f - (loadingTweaks.contentCloseThresholdPercent / 100f),
         placeholder = {
             if (loadingTweaks.transparentPlaceholders) {
-                Box(Modifier.fillMaxWidth().height(70.dp))
+                Box(Modifier.fillMaxWidth().height(56.dp))
             } else {
                 MetadataPlaceholder(
                     expansionFraction = expansionFractionProvider(),
@@ -1175,15 +1175,16 @@ private fun FullPlayerPortraitContent(
                 vertical = 0.dp
             ),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceAround
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // Album art fills remaining space after metadata + controls get their minimum,
-        // preventing controls from being squished on small screens
-        albumCoverSection(Modifier.weight(1f, fill = false))
+        // All sections scale proportionally with available screen height
+        albumCoverSection(Modifier.weight(0.50f, fill = false))
 
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier
+                .weight(0.22f, fill = false)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Box(Modifier.align(Alignment.Start)) {
                 songMetadataSection()
@@ -1191,7 +1192,12 @@ private fun FullPlayerPortraitContent(
             playerProgressSection()
         }
 
-        controlsSection()
+        Box(
+            modifier = Modifier.weight(0.28f, fill = false),
+            contentAlignment = Alignment.Center
+        ) {
+            controlsSection()
+        }
     }
 }
 
@@ -1259,7 +1265,7 @@ private fun SongMetadataDisplaySection(
     Row(
         modifier
             .fillMaxWidth()
-            .heightIn(min = 70.dp),
+            .heightIn(min = 56.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1559,7 +1565,7 @@ private fun PlayerProgressBarSection(
         applyPlaceholderDelayOnClose = loadingTweaks?.applyPlaceholdersOnClose ?: true,
         switchOnDragRelease = loadingTweaks?.switchOnDragRelease ?: false,
         isSheetDragGestureActive = isSheetDragGestureActive,
-        sharedBoundsModifier = Modifier.fillMaxWidth().heightIn(min = 70.dp),
+        sharedBoundsModifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
         expansionFractionProvider = expansionFractionProvider,
         isExpandedOverride = currentSheetState == PlayerSheetState.EXPANDED,
         normalStartThreshold = 0.08f,
@@ -1567,7 +1573,7 @@ private fun PlayerProgressBarSection(
         delayCloseThreshold = 1f - ((loadingTweaks?.contentCloseThresholdPercent ?: 0) / 100f),
         placeholder = {
              if (loadingTweaks?.transparentPlaceholders == true) {
-                 Box(Modifier.fillMaxWidth().heightIn(min = 70.dp))
+                 Box(Modifier.fillMaxWidth().heightIn(min = 56.dp))
              } else {
                  ProgressPlaceholder(
                      expansionFraction = expansionFraction,
@@ -1582,7 +1588,7 @@ private fun PlayerProgressBarSection(
             modifier = modifier
                 .fillMaxWidth()
                 .padding(vertical = lerp(2.dp, 0.dp, expansionFraction))
-                .heightIn(min = 70.dp)
+                .heightIn(min = 56.dp)
         ) {
             
             // Isolated Slider Component

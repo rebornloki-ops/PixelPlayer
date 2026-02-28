@@ -266,21 +266,25 @@ data class AdaptivePlaybackControlSizes(
  */
 @Composable
 fun rememberAdaptivePlaybackControlSizes(): AdaptivePlaybackControlSizes {
-    val screenWidthDp = LocalConfiguration.current.screenWidthDp
-    return remember(screenWidthDp) {
+    val config = LocalConfiguration.current
+    val screenWidthDp = config.screenWidthDp
+    val screenHeightDp = config.screenHeightDp
+    // Scale control heights based on screen height for proportional layout
+    val heightScale = (screenHeightDp / 800f).coerceIn(0.82f, 1.0f)
+    return remember(screenWidthDp, screenHeightDp) {
         when {
             screenWidthDp < 360 -> AdaptivePlaybackControlSizes(
-                height = 70.dp,
+                height = (70 * heightScale).dp,
                 playPauseIconSize = 30.dp,
                 iconSize = 26.dp
             )
             screenWidthDp <= 600 -> AdaptivePlaybackControlSizes(
-                height = 80.dp,
+                height = (80 * heightScale).dp,
                 playPauseIconSize = 36.dp,
                 iconSize = 32.dp
             )
             else -> AdaptivePlaybackControlSizes(
-                height = 90.dp,
+                height = (90 * heightScale).dp,
                 playPauseIconSize = 36.dp,
                 iconSize = 32.dp
             )
