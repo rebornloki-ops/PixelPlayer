@@ -800,7 +800,7 @@ fun SettingsCategoryScreen(
                             SettingsSubsection(title = "AI Provider") {
                                 ThemeSelectorItem(
                                     label = "Provider",
-                                    description = "Select which AI service to use for playlist generation and metadata",
+                                    description = "Choose your AI provider",
                                     options = mapOf(
                                         "GEMINI" to "Google Gemini",
                                         "DEEPSEEK" to "DeepSeek"
